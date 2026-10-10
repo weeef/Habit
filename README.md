@@ -1,6 +1,13 @@
 # Habit
 
-A social platform that blends imageboard-style threads, Reddit-style communities,
-Discord-style real-time chat/voice, and a Habbo-style pixel-art virtual world.
+**Walk in. Say hi.**
 
-See **[PLAN.md](./PLAN.md)** for the full product and technical plan.
+Habit is a pixel-art world where every chatroom is a real room. You can see
+who's inside before you go in, hang out without having to talk, and join the
+conversation when you feel like it. It mixes Discord-style chat,
+Reddit/imageboard-style communities and a Habbo-style virtual world, and it's
+built to feel far less intimidating than joining a server.
+
+- **MVP:** walk-in chat world. See [PLAN.md §3](./PLAN.md#3-the-mvp-walk-in-say-hi-weeks-012)
+- **Positioning & marketing:** see [PLAN.md §0](./PLAN.md#0-positioning--marketing)
+- **Full product & technical plan:** [PLAN.md](./PLAN.md)

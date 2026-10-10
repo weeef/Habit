@@ -10,6 +10,62 @@
 Name: **Habit**. Run a trademark search before launch, since the name is
 close to "Habbo". Keep the art and branding clearly original.
 
+**The bet:** Habit wins or loses on one thing: **how easy and approachable
+it is to start chatting.** Threads, voice, economy and games all come later.
+The MVP (§3) exists to prove that walking into a room and saying hi feels
+easier than joining a Discord server.
+
+---
+
+## 0. Positioning & marketing
+
+**Tagline options**
+- *"Walk in. Say hi."* (recommended)
+- *"Chat rooms you can actually walk into."*
+- *"No servers to join. Just rooms to visit."*
+
+**One-liner:** Habit is a pixel-art world where every chatroom is a real room.
+You can see who's inside before you go in, hang out without having to talk, and
+join the conversation when you feel like it.
+
+**Who it's for (launch audience)**
+1. **People put off by Discord**: they want community, but joining a
+   server full of strangers feels like crashing a party. Our core user.
+2. **The nostalgic**: grew up on Habbo, Club Penguin, Neopets or old forums
+   and miss hanging out *somewhere* instead of scrolling *something*.
+3. **Small niche communities and creators** (pixel artists, retro
+   gamers, a streamer's regulars) who want a hangout that feels cosy, not
+   like a corporate Slack.
+
+**Why it's marketable**
+- **It's visual and clippable.** A busy pixel room full of avatars and speech
+  bubbles makes a great 10-second TikTok, Reel or Short. Chat screenshots
+  don't. Every room is an ad for itself.
+- **The share link drops you straight in.** `habit.gg/r/retro-lounge` opens
+  the room in the browser, and you can look around **as a guest** without
+  signing up. Sign-up is only asked for when you try to talk (§3).
+- **The message is simple.** "Discord is a building full of locked doors;
+  Habit is a street where you can see into every window."
+- **Built-in FOMO, but kind.** Live head-counts, "friends are here" and
+  founding-member furni give people a reason to come back without dark
+  patterns.
+
+**Marketing channels (in order)**
+1. **Short-form video**: dev-log clips of the world being built, then
+   "day in the life of a Habit room" clips. Start posting before the MVP ships.
+2. **Seed communities**: invite 5–10 small communities (subreddits, Discord
+   servers, streamers' regulars) to get their own Hub at launch, with
+   founder badges for their members.
+3. **Waitlist with a hook**: sign up and reserve your username, get a
+   "Founding Visitor" item that will never be sold again.
+4. **Creator partnerships**: small streamers hold "come hang in my room"
+   nights. The share link means viewers are in the room within seconds.
+5. **Nostalgia communities**: Habbo/Club Penguin/old-web forums, posted
+   with care, not spam.
+
+**Brand voice:** warm, playful and a little retro. Never edgy-for-edgy's-sake.
+The imageboard influence shows up as fun and freedom, not as shock content.
+
 ---
 
 ## 1. What we borrow from each inspiration
@@ -142,57 +198,115 @@ make walking in feel less like a commitment and more like a visit?*
 
 ---
 
-## 3. Feature set by phase
+## 3. The MVP: "Walk in. Say hi." (weeks 0–12)
 
-### Phase 0: Foundations (weeks 0–4)
-- Decide name, legal entity, content policy and age policy (**13+ with a
-  separate 18+ gated area, or 18+ only**; see §7).
-- Design system: pixel-art style guide, avatar base, 20–30 starter furni.
-- Repo scaffolding, CI, staging environment, error tracking.
+### 3.1 The one thing the MVP must prove
+> **A first-time visitor can go from a shared link to sending their first
+> message in under 60 seconds, and it feels less intimidating than joining
+> a Discord server.**
 
-### Phase 1: MVP "the forum works" (weeks 4–12)
-Goal: a usable imageboard/forum hybrid. No game world yet.
-- Auth (email + OAuth), account settings, 2FA.
-- Boards: create (by invite at first), rules, moderator roles.
-- Threads and replies with images (upload → scan → thumbnail → CDN).
-- Named/anon toggle per post, per-thread poster IDs.
-- Bump mode and Ranked mode; catalog view; archive.
-- Voting, reporting, mod queue, bans (account, plus device/IP-reputation signals).
-- **Mandatory safety pipeline before launch:** hash-matching for known CSAM
-  (e.g. PhotoDNA / NCMEC hash lists or a vendor like Thorn Safer), NSFW
-  classifier, rate limits, CAPTCHA on anon posting.
-- Basic 2D profile with a static avatar picture.
+If that holds, everything else in this plan can be built on top. If it
+doesn't, no amount of threads, economy or mini-games will save it. So the MVP
+is **only the walk-in chat world**. The forum and imageboard features move to
+Phase 2.
 
-### Phase 2: "the world appears" (weeks 12–24)
-- Isometric **Hub** client for each Board: walk, sit, emote, chat bubbles.
-- **The Plaza** and the world graph: doors and portals between the Plaza,
-  Board Hubs and chatrooms; door previews with live head-counts; room
-  navigator / map for teleporting.
-- **Walk-in chatrooms**: each Board text channel is a room you enter through
-  a door (walk in = join, walk out = leave), with a side chat log next to
-  the speech bubbles, and list view as a fallback.
+This ordering also lowers launch risk: with **no user image uploads in the
+MVP** (avatars and furni are our own art), the biggest legal and safety exposure
+(illegal image uploads) doesn't exist until Phase 2, when the scanning pipeline
+is built for it.
+
+### 3.2 The MVP user journey (this is the spec)
+1. **Click a link** (`habit.gg/r/retro-lounge`) or open the homepage → you're
+   **in the Plaza as a guest within ~3 seconds**. No signup, no download.
+   You get a random guest avatar.
+2. **Look around.** Walk by clicking tiles. See signposts to Hubs, doors with
+   live counts ("#general · 9 inside"). Hover a door to read the last few
+   messages.
+3. **Walk into a room.** You see avatars, speech bubbles and the chat log.
+   Guests can read, walk, sit and wave. Nobody is notified that you arrived.
+4. **Want to talk?** Click the chat box → a **one-step signup** (pick a name +
+   continue with Google/Discord/Apple or email magic link; confirm age band).
+   You stay in the same room. No reload and no lost place.
+5. **Say hi.** Your message appears as a bubble and in the log. Your first
+   visit badge tells regulars you're new. **Quick-start prompts** are offered
+   ("👋 Hi!", "What's everyone up to?") so the first message takes one tap.
+6. **Make it yours (lightly).** Pick from ~10 preset avatar looks and colours.
+   Favourite the room so it's one click away next time.
+7. **Come back.** The navigator shows your favourites with live counts.
+   "3 people in #general now."
+
+### 3.3 In scope for the MVP
+| Area | MVP includes |
+|---|---|
+| World | The Plaza + 5–10 seeded Board Hubs, each with 2–4 chatrooms behind doors; one hand-made layout per room type |
+| Movement | Click-to-walk, sit on furniture, 5 emotes (wave, dance, sit, laugh, heart) |
+| Chat | Text chat as speech bubbles + side log, recent history on entering, emoji, @mentions within the room, quick-start prompts |
+| Approachability | Guest mode (look but don't talk), door previews and live counts, quiet entry and exit, "first visit" badge, newcomers' corner in each Hub |
+| Navigation | Room navigator: search, favourites, live counts, teleport-to-door; shareable room links |
+| Accounts | One-step signup (OAuth or magic link), username, age band, preset avatar picker |
+| Accessibility | List view (plain channel list and chat, no rendering); works on mobile browsers |
+| Safety | Report, block and mute; room mods can kick, timeout and ban; word filter + toxicity scoring on chat; rate limits; new-account slow mode; staff admin panel; audit log |
+| Platform | Web only (desktop + mobile browser). Analytics for the funnel in §3.5 |
+
+### 3.4 Explicitly NOT in the MVP
+Threads/imageboard posting, image uploads, anonymous posting, voting, voice,
+DMs, friends list, personal rooms, room building, furni inventory, currencies,
+quests, mini-games, trading, user-created Boards, native mobile apps.
+*(Each is planned below. Saying no to them now is what makes the MVP
+shippable in ~12 weeks.)*
+
+### 3.5 MVP success criteria (decide go / no-go on these)
+| Metric | Target |
+|---|---|
+| Link click → in the world (guest) | ≥ 85%, median < 5 s |
+| Guest → signs up to chat (first session) | ≥ 25% |
+| Signed up → sends first message within 5 min | ≥ 70% |
+| Median time from landing to first message | < 60 s for people who chat |
+| D7 retention of people who sent a message | ≥ 25% |
+| Survey: "easier to join than a Discord server" | ≥ 70% agree |
+| Reports per 1k messages / median time-to-action | tracked; < 1 hr action time |
+
+### 3.6 MVP timeline
+| Weeks | Milestone |
+|---|---|
+| 0–2 | Decisions (age policy, art style), repo, CI, staging. **Prototype: Plaza + 2 rooms joined by a door, 2 avatars walking and chatting over WebSocket.** Playtest the feel with 10 people. |
+| 3–6 | Real gateway (rooms, doors, presence, chat persistence), guest mode, one-step signup, navigator, avatar presets, first art pass |
+| 7–9 | Safety tools (report, block, mute, mod kick/ban, filter, admin panel), list view, mobile-browser polish, analytics funnel |
+| 10–11 | Closed alpha with 2–3 seed communities; fix whatever slows the time to first message |
+| 12 | Public beta launch with 5–10 seeded Hubs + the launch event (§11) |
+
+---
+
+## 3A. After the MVP: feature roadmap
+
+### Phase 2: "the noticeboard" (months 3–6): the forum/imageboard layer
+- Boards get **threads**: the Hub noticeboard opens a thread view; Bump mode
+  (imageboard) and Ranked mode (Reddit) per Board.
+- **Image uploads**, launching *together with* the mandatory safety pipeline:
+  CSAM hash matching (PhotoDNA / NCMEC hash lists or a vendor like Thorn
+  Safer), NSFW classifier, thumbnailing and CDN.
+- Named/anon toggle per post with per-thread poster IDs; voting; mod queue.
 - Thread objects in the Hub (noticeboard showing the top 5 threads, etc.).
-- Avatar editor (layered sprites: body, hair, outfit, accessories).
-- Inventory, starter furni, **Pips** economy, daily quests ("reply to 3
-  threads", "visit 2 new Hubs").
-- Personal Rooms: place furni on an isometric grid, permissions (open / friends
-  / locked / password).
-- Presence: "12 people in /retro/ right now".
+- User-created Boards (by application at first).
 
-### Phase 3: "the Discord layer" (weeks 24–36)
-- Channel roles and permissions (who can enter which room, locked doors,
-  knock-to-enter, mod-only back rooms), searchable chat history.
-- Voice rooms (WebRTC SFU) as walkable 🔊 rooms with proximity voice and
+### Phase 3: "make it yours" (months 6–9): friends, voice, rooms, economy
+- Friends list, "follow friend" teleport, "friends are here" in the navigator.
+- DMs (**off by default for minors**, opt-in only, with filters).
+- Voice rooms (LiveKit) as walkable 🔊 rooms with proximity voice and
   "stage" tiles for talks.
-- "Follow friend" / "Go to" teleport and "friends are here" in the navigator.
-- Events: scheduled AMAs, game nights, "Bump Wars" (time-boxed thread contests).
-- Friends list, DMs (**off by default for minors**, opt-in only, with filters).
-- Notifications (web push, mobile).
+- Full avatar editor (layered sprites), inventory, furni, **Pips** economy,
+  daily quests ("visit 2 new Hubs", "say hi to a newcomer").
+- Personal Rooms: place furni on an isometric grid, permissions (open / friends
+  / locked / knock / password).
+- Channel roles and permissions (locked doors, knock-to-enter, mod-only back
+  rooms), searchable chat history, notifications.
+- Monetization switches on: cosmetics (Gems) and Habit+ (§8).
 
 ### Phase 4: "the game deepens" (months 9–12+)
 - Mini-games inside rooms: trivia, drawing/guessing, simple racing, wired-style
   furni logic (triggers → actions, like Habbo "Wired").
 - Trading marketplace for tradeable furni (escrow, anti-scam and anti-RMT rules).
+- Events: scheduled AMAs, game nights, "Bump Wars" (time-boxed thread contests).
 - Seasonal events and a cosmetic-only battle pass.
 - Board vs. Board leaderboards (creative contests, not raids).
 - Mobile apps (React Native / Capacitor wrapper of the web client first).
@@ -383,8 +497,12 @@ what decides whether the product survives.
 ---
 
 ## 9. Metrics that matter
-- **Activation**: % of new users who post or reply within 24h; % who enter a Hub.
-- **Retention**: D1 / D7 / D30; weekly active posters.
+- **North star: weekly chatters**, meaning people who sent at least one
+  message that week. It directly measures "approachable enough to talk".
+- **Activation funnel**: link → in world → entered a room → signed up →
+  first message (targets in §3.5). Time to first message is the number
+  everyone on the team should know.
+- **Retention**: D1 / D7 / D30 of people who chatted; favourited rooms per user.
 - **Health**: reports per 1k posts, time to action on reports, % of content
   actioned automatically vs. by humans, repeat-offender rate.
 - **Economy**: Pips inflation (earned vs. sunk), Gem conversion rate,
@@ -394,7 +512,7 @@ what decides whether the product survives.
 ---
 
 ## 10. Team & budget (rough, lean start)
-| Role | MVP (Phase 1–2) |
+| Role | MVP (first 12 weeks) |
 |---|---|
 | Full-stack engineers | 2 |
 | Game/realtime engineer (PixiJS, WebSockets) | 1 |
@@ -409,14 +527,19 @@ discounted for small platforms; apply early.
 ---
 
 ## 11. Launch strategy
-1. **Closed alpha**: 5–10 hand-picked Boards around niches with existing
-   culture (retro games, pixel art, a specific fandom). Recruit their mods first.
-2. **Seed the world**: a launch event in a central "Plaza" Hub with
-   exclusive first-season furni (strong FOMO hook, costs nothing).
-3. **Invite waves**: each member gets invites; Boards unlock Hub themes as
-   they grow.
-4. **Open beta**: public signup with all safety systems tested under load
-   (run a red-team week of trying to break moderation first).
+1. **Pre-launch (from week 0)**: waitlist + username reservation +
+   "Founding Visitor" item; post dev-log clips of the world to short-form video.
+2. **Closed alpha (weeks 10–11)**: 2–3 small communities with existing
+   culture (retro games, pixel art, a streamer's regulars). Recruit their mods
+   first, and watch new visitors' first 60 seconds closely.
+3. **Seed the world**: 5–10 Hubs, each with a host community and a few
+   **greeters** online at peak hours, so no early visitor walks into an
+   empty room.
+4. **Launch event (week 12)**: a scheduled opening party in the Plaza with
+   founding-member furni (costs nothing, strong reason to show up). Creators
+   share their room links on stream.
+5. **Open beta**: guest access open to everyone, with all safety systems
+   tested under load (run a red-team week of trying to break moderation first).
 
 ---
 
@@ -424,23 +547,27 @@ discounted for small platforms; apply early.
 | Risk | Mitigation |
 |---|---|
 | Becomes a haven for illegal or extremist content | Hash scanning, account-backed anonymity, paid T&S, clear policy enforced from day 1 |
-| Child safety incident | Age policy decision in Phase 0, DM restrictions, safe defaults, age assurance |
-| Empty world ("ghost town") | Launch small and dense; Hubs show the forum activity (threads as objects) so they feel alive even when few avatars are online; scheduled events |
+| Child safety incident | Age policy decided in MVP weeks 0–2, DM restrictions, safe defaults, age assurance |
+| Empty world ("ghost town") | Launch small and dense (few Hubs, not many); greeters at peak hours; show *recent* chat on doors so rooms feel alive even when quiet; scheduled events; later, threads on the noticeboard |
+| Walking feels slow or gimmicky | Navigator teleport and list view always available; playtest the time to first message weekly; cut anything that adds steps before saying hi |
 | Economy exploits / duping | Append-only ledger, server-authoritative everything, rate caps, anomaly alerts |
-| Scope creep (it's 4 products in one) | Strict phasing: forum first, world second, voice third, mini-games last |
+| Scope creep (it's 4 products in one) | The MVP is walk-in chat only (§3.4 lists what's out); forum next, then voice/economy, mini-games last |
 | Realtime scaling costs | Room caps and instancing; low tick rate; voice only on demand |
 
 ---
 
 ## 13. Immediate next steps (this repo)
-1. Pick: **age policy**, **final name**, and **backend language** (Node vs. Go).
-2. Scaffold the monorepo (`apps/web`, `apps/api`, `packages/shared`) with
-   docker-compose for Postgres and Redis.
-3. Build Phase 1 vertical slice: sign up → create Board → post a thread with an
-   image (anon or named) → reply → vote → report → mod removes it.
-4. Prototype in parallel: a PixiJS **Plaza plus two chatrooms joined by
+1. Decide: **age policy** (recommendation: 16+ or 18+ for the MVP, which
+   makes guest mode and open chat much simpler to run safely) and **backend
+   language** (Node vs. Go).
+2. Scaffold the monorepo (`apps/web`, `apps/game`, `apps/gateway`,
+   `packages/shared`) with docker-compose for Postgres and Redis.
+3. Build the week 0–2 prototype: **the Plaza plus two chatrooms joined by
    doors**. Avatars walk via WebSocket, step through a door into a chatroom,
-   and chat with bubbles and a side log. This tests the core "walk in to
-   chat" feel and the art direction early.
-5. Write the Content Policy draft and pick a CSAM-scanning vendor before any
-   public image uploads.
+   and chat with bubbles and a side log.
+4. Playtest it with 10 people who say Discord intimidates them; time their
+   link → first message, and iterate.
+5. Put up a landing page + waitlist with username reservation, and start
+   posting dev-log clips.
+6. Draft the Content Policy now. Pick a CSAM-scanning vendor before Phase 2
+   (image uploads).
