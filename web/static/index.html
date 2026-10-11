@@ -6,18 +6,11 @@
   <title>Habit</title>
   <meta name="description" content="Walk in. Say hi. Chatrooms you can actually walk into.">
   <meta name="theme-color" content="#1d1b2e">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">habit</div>
-    <div class="where" id="where">Connecting…</div>
-    <div class="top-actions">
-      <button type="button" id="viewToggle" class="ghost" aria-pressed="false" title="Switch between the world and a plain chat list">List view</button>
-      <button type="button" id="accountBtn" class="ghost">Sign up</button>
-    </div>
-  </header>
-
   <main class="layout">
     <section class="stage" id="stage" aria-label="Room view">
       <canvas id="world"></canvas>
@@ -32,30 +25,49 @@
       </div>
     </section>
 
-    <aside class="side">
-      <section class="panel">
-        <h2>Rooms</h2>
-        <ul class="nav" id="nav"></ul>
-      </section>
+    <!-- Floating over the world, styled like NYC transit signs. -->
+    <header class="hud">
+      <div class="brand" aria-label="Habit">habit</div>
+      <button type="button" class="station" id="station" title="Open the subway map to go somewhere else">
+        <span class="bullet" id="stationBullet" aria-hidden="true">⛲</span>
+        <span class="station-name" id="where">Connecting…</span>
+        <span class="station-count" id="stationCount"></span>
+      </button>
+      <div class="hud-actions">
+        <button type="button" class="sign-chip time-chip" id="timeChip" hidden></button>
+        <button type="button" id="notesBtn" class="sign-chip bell" hidden aria-label="Replies to you">🔔<span class="badge" id="notesCount" hidden></span></button>
+        <button type="button" id="viewToggle" class="sign-chip" aria-pressed="false" title="Switch between the world and a plain chat list">List view</button>
+        <button type="button" id="accountBtn" class="sign-chip">Sign up</button>
+      </div>
+    </header>
 
-      <section class="panel chat">
-        <h2 id="chatTitle">Chat</h2>
-        <ol class="log" id="log" aria-live="polite"></ol>
-        <div class="prompts" id="prompts">
-          <button type="button">👋 Hi!</button>
-          <button type="button">What's everyone up to?</button>
-          <button type="button">First time here!</button>
+    <aside class="side" id="side">
+      <section class="panel chat sign">
+        <div class="panel-head">
+          <h2 id="chatTitle">Chat</h2>
+          <button type="button" class="sign-chip small" id="chatHide" aria-controls="side">Hide chat</button>
         </div>
-        <form class="say" id="sayForm" autocomplete="off">
-          <input id="say" maxlength="280" placeholder="Say something…" aria-label="Message">
-          <button type="submit">Send</button>
-        </form>
+
+        <div class="pane" id="chatPane">
+          <ol class="log" id="log" aria-live="polite"></ol>
+          <div class="prompts" id="prompts">
+            <button type="button">👋 Hi!</button>
+            <button type="button">What's everyone up to?</button>
+            <button type="button">First time here!</button>
+          </div>
+          <form class="say" id="sayForm" autocomplete="off">
+            <input id="say" maxlength="280" placeholder="Say something…" aria-label="Message">
+            <button type="submit">Send</button>
+          </form>
+        </div>
+
         <label class="named">
           <input type="checkbox" id="named" disabled>
           Show my username (you're anonymous by default)
         </label>
       </section>
     </aside>
+    <button type="button" class="sign-chip chat-open" id="chatShow" hidden aria-controls="side">💬 Chat</button>
   </main>
 
   <dialog id="authDialog">
@@ -69,6 +81,16 @@
       <label>Username <input name="username" required minlength="3" maxlength="20" pattern="[A-Za-z0-9_]+" autocomplete="username"></label>
       <label>Password <input name="password" type="password" required minlength="10" autocomplete="new-password"></label>
       <label class="signup-only">Birth year <input name="birthYear" inputmode="numeric" pattern="[0-9]{4}" placeholder="YYYY" autocomplete="off"></label>
+      <fieldset class="signup-only creator">
+        <legend>Your character</legend>
+        <canvas id="creatorPreview" aria-hidden="true"></canvas>
+        <div class="creator-rows">
+          <div class="swatches" data-part="skin" role="radiogroup" aria-label="Skin tone"></div>
+          <div class="swatches" data-part="hair" role="radiogroup" aria-label="Hair colour"></div>
+          <div class="swatches" data-part="outfit" role="radiogroup" aria-label="Outfit colour"></div>
+          <div class="chips" data-part="accessory" role="group" aria-label="Accessory"></div>
+        </div>
+      </fieldset>
       <p class="error" id="authError" role="alert"></p>
       <div class="row">
         <button type="button" class="ghost" id="authCancel">Just looking</button>
@@ -85,6 +107,85 @@
       <div class="row">
         <button type="button" id="copyCode" class="ghost">Copy</button>
         <button type="button" id="savedCode">I've saved it</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- The room's board, opened from the noticeboard in the world. -->
+  <dialog id="boardDialog" class="board-dialog" aria-labelledby="boardTitle">
+    <div class="board-shell">
+      <header class="board-head">
+        <div>
+          <h2 id="boardTitle">📌 Board</h2>
+          <p class="muted">Posts here stay, so come back any time.</p>
+        </div>
+        <button type="button" class="ghost close" id="boardClose" aria-label="Close the board">✕</button>
+      </header>
+
+      <div id="boardList" class="pane">
+        <div class="board-bar">
+          <div class="sorts" role="tablist" aria-label="Sort posts">
+            <button type="button" role="tab" data-sort="active">🕒 Latest</button>
+            <button type="button" role="tab" data-sort="new">✨ New</button>
+            <button type="button" role="tab" data-sort="hot">🔥 Hot</button>
+            <button type="button" role="tab" data-sort="top">⭐ Top</button>
+            <button type="button" role="tab" data-sort="downvoted">👎 Most downvoted</button>
+          </div>
+          <button type="button" id="newThreadBtn">New post</button>
+        </div>
+        <ol class="threads" id="threads"></ol>
+        <button type="button" class="ghost" id="moreThreads" hidden>More posts</button>
+      </div>
+
+      <div id="threadView" class="pane" hidden>
+        <div class="board-bar">
+          <button type="button" class="ghost" id="backToBoard">← All posts</button>
+          <button type="button" class="ghost" id="goThere" hidden></button>
+        </div>
+        <div class="thread-scroll" id="threadScroll">
+          <article class="post op-post" id="threadPost"></article>
+          <ol class="replies" id="replies"></ol>
+        </div>
+        <form class="say" id="replyForm" autocomplete="off">
+          <textarea id="replyText" maxlength="2000" rows="2" placeholder="Write a reply…" aria-label="Reply"></textarea>
+          <button type="submit">Reply</button>
+        </form>
+        <p class="muted" id="threadLocked" hidden>This thread is locked. It stays readable, but can't take new replies.</p>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="subwayDialog" aria-labelledby="subwayTitle">
+    <div class="auth">
+      <h2 id="subwayTitle">🚇 Where to?</h2>
+      <p class="muted">Pick a stop. Trains run every second.</p>
+      <ol class="subway-lines" id="subwayLines"></ol>
+      <div class="row">
+        <button type="button" class="ghost" id="subwayClose">Stay here</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="threadDialog">
+    <form id="threadForm" class="auth" autocomplete="off">
+      <h2 id="threadDialogTitle">New post</h2>
+      <p class="muted">Posts stay on this room's board. You're anonymous unless you've chosen to show your username.</p>
+      <label>Title <input name="title" required maxlength="100"></label>
+      <label>Post <textarea name="text" required maxlength="2000" rows="6"></textarea></label>
+      <p class="error" id="threadError" role="alert"></p>
+      <div class="row">
+        <button type="button" class="ghost" id="threadCancel">Cancel</button>
+        <button type="submit" id="threadSubmit">Post</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="notesDialog">
+    <div class="auth">
+      <h2>Replies to you</h2>
+      <ol class="notes" id="notesList"></ol>
+      <div class="row">
+        <button type="button" id="notesClose">Close</button>
       </div>
     </div>
   </dialog>

@@ -2,7 +2,7 @@
 
 **Walk in. Say hi.**
 
-Habit is a pixel-art world where every chatroom is a real room. You can see
+Habit is a cute, cosy virtual world where every chatroom is a real room. You can see
 who's inside before you go in, hang out without having to talk, and join the
 conversation when you feel like it. It mixes Discord-style chat,
 Reddit/imageboard-style communities and a Habbo-style virtual world, and it's
@@ -42,7 +42,7 @@ http://localhost:8080. To update the folder without starting Habit, run
 
 ## Run the prototype
 
-You need Go 1.24 or newer.
+You need Go 1.26 or newer.
 
 ```sh
 go run ./cmd/habit            # then open http://localhost:8080
@@ -51,6 +51,18 @@ go test ./...
 ```
 
 Open the page in two browser windows to see two people in the same world.
+
+**Saving data.** Without a database, accounts and chat live in memory and are
+lost on restart. To keep them, point Habit at a Postgres database (it creates
+its tables itself):
+
+```sh
+go run ./cmd/habit -db postgres://user:pass@localhost:5432/habit
+# or set DATABASE_URL instead of passing -db
+```
+
+To run the database tests too, set `HABIT_TEST_DATABASE_URL` to a throwaway
+database (the tests empty it) before `go test ./...`.
 
 **What works now (website, week 0–2 prototype):**
 - The Plaza with doors to two communities, **Gaming** and **Gym**, each with
@@ -67,7 +79,22 @@ Open the page in two browser windows to see two people in the same world.
 - Teen (13–17) personal-info filter; under-13s can't sign up.
 - List view (plain chat, no world rendering) and a phone-friendly layout.
 
-**Not yet:** everything is in memory (a restart forgets accounts and chat),
-recovery codes can't be redeemed yet, and there's no report/block/mute or
+- Accounts, logins and chat history saved to Postgres when a database is set.
+- Cute voxel characters that turn to face where they walk and look at
+  whoever's talking. Design yours when you sign up (skin, hair, outfit,
+  accessory).
+- **The Plaza** is a little New York: skyscrapers, neon signs, taxis on
+  the street, food carts (grab a hot dog), hydrants, newspaper boxes,
+  steaming manholes and a subway entrance that rides you to any room. Toss
+  a coin in the fountain, sit on a bench, shake a cherry tree, ring the
+  hello bell, scatter the pigeons. It has a 24-minute day/night cycle; the
+  skyline lights up at dusk.
+- Every room has a **noticeboard** on the wall. Click it and the board
+  opens in the middle of the screen: text threads and replies that stay
+  forever, 👍/👎 votes, and filters (Latest, New, Hot, Top, Most
+  downvoted). Anonymous by default (with an "OP" mark), plus a 🔔
+  notification when someone replies in a thread you posted in.
+
+**Not yet:** recovery codes can't be redeemed yet, and there's no report/block/mute or
 moderator tools. Those are next (PLAN.md §3.6, weeks 3–9). The mobile app
 comes after the website (PLAN.md Phase 3).

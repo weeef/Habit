@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"regexp"
 	"time"
 )
@@ -42,10 +43,20 @@ func anonTag(secret []byte, key, roomID string, now time.Time) string {
 	return hex.EncodeToString(mac.Sum(nil))[:4]
 }
 
+// postTag is the anonymous tag on a board post. It's stable for one person
+// within one thread (so a conversation can be followed) and unlinkable across
+// threads.
+func postTag(secret []byte, accountID string, threadID int64) string {
+	mac := hmac.New(sha256.New, secret)
+	fmt.Fprintf(mac, "post|%s|%d", accountID, threadID)
+	return hex.EncodeToString(mac.Sum(nil))[:4]
+}
+
 // bucket is a token-bucket rate limiter.
 type bucket struct {
-	tokens float64
-	last   time.Time
+	burst, perSec float64
+	tokens        float64
+	last          time.Time
 }
 
 const (
@@ -53,11 +64,13 @@ const (
 	chatPerSec = 1.0
 )
 
+func newBucket(burst, perSec float64) bucket { return bucket{burst: burst, perSec: perSec} }
+
 func (b *bucket) allow(now time.Time) bool {
 	if b.last.IsZero() {
-		b.tokens = chatBurst
+		b.tokens = b.burst
 	} else {
-		b.tokens = min(chatBurst, b.tokens+now.Sub(b.last).Seconds()*chatPerSec)
+		b.tokens = min(b.burst, b.tokens+now.Sub(b.last).Seconds()*b.perSec)
 	}
 	b.last = now
 	if b.tokens < 1 {

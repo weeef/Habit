@@ -38,10 +38,65 @@ type Door struct {
 	Label    string
 }
 
+// Prop kinds. Benches are seats: you can walk onto them (as the last step)
+// and sit. Everything else blocks its tiles; most can be used.
+const (
+	PropFountain = "fountain" // toss a coin and make a wish
+	PropBench    = "bench"    // sit
+	PropTree     = "tree"     // shake it
+	PropBell     = "bell"     // ring it
+	PropLamp     = "lamp"     // decoration
+	PropBoard    = "board"    // the room's noticeboard
+	PropClock    = "clock"    // shows the plaza's time of day
+	PropCart     = "cart"     // a food cart (Variant: hotdog, pretzel, halal, coffee); grab a snack
+	PropHydrant  = "hydrant"  // sprays water
+	PropNewsbox  = "newsbox"  // read a headline
+	PropSubway   = "subway"   // a subway entrance: ride to another room
+	PropManhole  = "manhole"  // steams; you can walk over it
+)
+
+// Prop is an object in a room. It covers W×H tiles from At.
+type Prop struct {
+	ID      string
+	Kind    string
+	Variant string // e.g. which food a cart sells
+	At      Point
+	W, H    int
+	Dir     Point // benches: the way a sitter faces; carts: the way they face
+}
+
+func (p *Prop) size() (int, int) { return max(p.W, 1), max(p.H, 1) }
+
+// Covers reports whether the prop sits on tile q.
+func (p *Prop) Covers(q Point) bool {
+	w, h := p.size()
+	return q.X >= p.At.X && q.X < p.At.X+w && q.Y >= p.At.Y && q.Y < p.At.Y+h
+}
+
+// Tiles lists the tiles the prop covers.
+func (p *Prop) Tiles() []Point {
+	w, h := p.size()
+	var out []Point
+	for y := p.At.Y; y < p.At.Y+h; y++ {
+		for x := p.At.X; x < p.At.X+w; x++ {
+			out = append(out, Point{x, y})
+		}
+	}
+	return out
+}
+
+// Seat reports whether the prop is something you sit on.
+func (p *Prop) Seat() bool { return p.Kind == PropBench }
+
+// Flat reports whether the prop lies flat on the ground, so you can walk
+// straight over it.
+func (p *Prop) Flat() bool { return p.Kind == PropManhole }
+
 // Room is the static definition of a room.
 //
-// Rows draws the floor plan: '.' is walkable floor, anything else is empty
-// space. Rows[y][x] is the tile at (x, y).
+// Rows draws the floor plan: '.', ',' and ':' are walkable floor in three
+// materials (the client picks colours per room, e.g. paving, cobbles and
+// paths in the Plaza); anything else is empty space. Rows[y][x] is the tile at (x, y).
 type Room struct {
 	ID       string
 	Name     string
@@ -50,15 +105,64 @@ type Room struct {
 	Rows     []string
 	Spawn    Point
 	Doors    []Door
+	Props    []Prop
 	Capacity int
 }
 
 func (r *Room) W() int { return len(r.Rows[0]) }
 func (r *Room) H() int { return len(r.Rows) }
 
-// Floor reports whether p is a walkable floor tile.
+// Floor reports whether p is a floor tile (whether or not a prop stands on it).
 func (r *Room) Floor(p Point) bool {
-	return p.Y >= 0 && p.Y < r.H() && p.X >= 0 && p.X < len(r.Rows[p.Y]) && r.Rows[p.Y][p.X] == '.'
+	if p.Y < 0 || p.Y >= r.H() || p.X < 0 || p.X >= len(r.Rows[p.Y]) {
+		return false
+	}
+	switch r.Rows[p.Y][p.X] {
+	case '.', ',', ':':
+		return true
+	}
+	return false
+}
+
+// PropAt returns the prop on tile p, or nil.
+func (r *Room) PropAt(p Point) *Prop {
+	for i := range r.Props {
+		if r.Props[i].Covers(p) {
+			return &r.Props[i]
+		}
+	}
+	return nil
+}
+
+// PropByID returns the prop with the given ID, or nil.
+func (r *Room) PropByID(id string) *Prop {
+	for i := range r.Props {
+		if r.Props[i].ID == id {
+			return &r.Props[i]
+		}
+	}
+	return nil
+}
+
+// Blocked reports whether a prop that can't be walked onto stands on p.
+func (r *Room) Blocked(p Point) bool {
+	pr := r.PropAt(p)
+	return pr != nil && !pr.Seat() && !pr.Flat()
+}
+
+// SeatAt returns the seat on tile p, or nil.
+func (r *Room) SeatAt(p Point) *Prop {
+	if pr := r.PropAt(p); pr != nil && pr.Seat() {
+		return pr
+	}
+	return nil
+}
+
+// Standable reports whether an avatar can stand on p: floor with no door,
+// and no prop except a flat one.
+func (r *Room) Standable(p Point) bool {
+	pr := r.PropAt(p)
+	return r.Floor(p) && (pr == nil || pr.Flat()) && r.DoorAt(p) == nil
 }
 
 // DoorAt returns the door on tile p, or nil.
@@ -84,19 +188,38 @@ func Validate(rooms []*Room) error {
 		if len(r.Rows) == 0 {
 			return fmt.Errorf("room %q has no rows", r.ID)
 		}
-		if !r.Floor(r.Spawn) || r.DoorAt(r.Spawn) != nil {
+		if !r.Standable(r.Spawn) {
 			return fmt.Errorf("room %q: spawn %v is not plain floor", r.ID, r.Spawn)
 		}
 		for _, d := range r.Doors {
-			if !r.Floor(d.At) {
-				return fmt.Errorf("room %q: door at %v is not on floor", r.ID, d.At)
+			if !r.Floor(d.At) || r.PropAt(d.At) != nil {
+				return fmt.Errorf("room %q: door at %v is not on clear floor", r.ID, d.At)
 			}
 			t, ok := byID[d.Target]
 			if !ok {
 				return fmt.Errorf("room %q: door targets unknown room %q", r.ID, d.Target)
 			}
-			if !t.Floor(d.TargetAt) || t.DoorAt(d.TargetAt) != nil {
+			if !t.Standable(d.TargetAt) {
 				return fmt.Errorf("room %q: door lands on %v in %q, which is not plain floor", r.ID, d.TargetAt, t.ID)
+			}
+		}
+		ids := map[string]bool{}
+		for i := range r.Props {
+			p := &r.Props[i]
+			if p.ID == "" || ids[p.ID] {
+				return fmt.Errorf("room %q: prop IDs must be set and unique (%q)", r.ID, p.ID)
+			}
+			ids[p.ID] = true
+			for _, q := range p.Tiles() {
+				if !r.Floor(q) {
+					return fmt.Errorf("room %q: prop %q at %v is off the floor", r.ID, p.ID, q)
+				}
+				if o := r.PropAt(q); o != p {
+					return fmt.Errorf("room %q: props %q and %q overlap at %v", r.ID, p.ID, o.ID, q)
+				}
+			}
+			if p.Seat() && p.Dir == (Point{}) {
+				return fmt.Errorf("room %q: bench %q needs a direction", r.ID, p.ID)
 			}
 		}
 	}

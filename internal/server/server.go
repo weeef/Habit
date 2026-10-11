@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"math"
 	"net/http"
 	"strings"
 	"sync"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"habit/internal/store"
 	"habit/internal/world"
 )
 
@@ -24,17 +26,16 @@ const (
 	maxChatRunes   = 280
 	chatHistoryLen = 100
 	peekRecent     = 3
-	sendQueueLen   = 64
+	sendQueueLen   = 1024 // a busy 500-person room sends a lot at once
 	newbieWindow   = 24 * time.Hour
 )
-
-var avatarColors = []string{"#e4572e", "#29335c", "#f3a712", "#a8c686", "#669bbc", "#9b5de5", "#f15bb5", "#00bbf9"}
 
 var allowedEmotes = map[string]bool{"wave": true, "dance": true, "laugh": true, "heart": true, "sit": true}
 
 // Options configures a Server. Zero values get sensible defaults.
 type Options struct {
 	Rooms  []*world.Room
+	Store  store.Store   // nil keeps everything in memory
 	Static fs.FS         // web client files; nil serves only /ws
 	Tick   time.Duration // world update interval
 	Step   time.Duration // time to walk one tile
@@ -45,6 +46,7 @@ type Options struct {
 // that's plenty for a prototype and keeps door transfers simple.
 type Server struct {
 	opts     Options
+	store    store.Store
 	accounts *Accounts
 	secret   []byte
 
@@ -58,6 +60,8 @@ type room struct {
 	def      *world.Room
 	sessions map[*session]struct{}
 	history  []chatMsg
+	uses     map[string]int // per prop, e.g. wishes in the fountain (since start)
+	lastBell time.Time
 }
 
 type session struct {
@@ -66,29 +70,38 @@ type session struct {
 	stop sync.Once
 
 	// Everything below is guarded by Server.mu.
-	guestKey  string
-	acct      *Account
-	named     bool
-	color     string
-	room      *room
-	pubID     string // fresh on every room entry, so avatars can't be followed between rooms
-	pos       world.Point
-	path      []world.Point
-	walked    time.Duration
-	limiter   bucket
-	sentFirst bool
+	guestKey   string
+	acct       *store.Account
+	named      bool
+	style      store.Style // the account's character, or a random one for guests
+	room       *room
+	pubID      string // fresh on every room entry, so avatars can't be followed between rooms
+	pos        world.Point
+	path       []world.Point
+	walked     time.Duration
+	limiter    bucket
+	threadLim  bucket
+	replyLim   bucket
+	useLim     bucket
+	voteLim    bucket
+	sentFirst  bool
+	viewing    int64  // board thread open in the client, for live replies
+	seat       string // bench prop they're sitting on
+	pendingUse string // prop to use when they finish walking
 }
 
 func (s *session) close() { s.stop.Do(func() { close(s.done) }) }
 
-// New builds a server. It panics on an invalid room set, which is a
-// programming error.
-func New(opts Options) *Server {
+// New builds a server and loads each room's recent chat from the store.
+func New(ctx context.Context, opts Options) (*Server, error) {
 	if opts.Rooms == nil {
 		opts.Rooms = world.DefaultRooms()
 	}
 	if err := world.Validate(opts.Rooms); err != nil {
-		panic(err)
+		return nil, err
+	}
+	if opts.Store == nil {
+		opts.Store = store.NewMemory()
 	}
 	if opts.Tick == 0 {
 		opts.Tick = 50 * time.Millisecond
@@ -99,17 +112,30 @@ func New(opts Options) *Server {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
+	secret, err := opts.Store.LoadOrStoreSecret(ctx, randomBytes(32))
+	if err != nil {
+		return nil, fmt.Errorf("loading secret: %w", err)
+	}
 	sv := &Server{
 		opts:     opts,
-		accounts: NewAccounts(),
-		secret:   randomBytes(32),
+		store:    opts.Store,
+		accounts: NewAccounts(opts.Store),
+		secret:   secret,
 		rooms:    map[string]*room{},
 	}
 	for _, def := range opts.Rooms {
-		sv.rooms[def.ID] = &room{def: def, sessions: map[*session]struct{}{}}
+		saved, err := opts.Store.RecentMessages(ctx, def.ID, chatHistoryLen)
+		if err != nil {
+			return nil, fmt.Errorf("loading %s history: %w", def.ID, err)
+		}
+		r := &room{def: def, sessions: map[*session]struct{}{}, uses: map[string]int{}}
+		for _, m := range saved {
+			r.history = append(r.history, chatMsg{From: m.AvatarID, Name: m.Name, Text: m.Text, TS: m.SentAt, Newbie: m.Newbie})
+		}
+		sv.rooms[def.ID] = r
 		sv.order = append(sv.order, def.ID)
 	}
-	return sv
+	return sv, nil
 }
 
 // Handler serves the client at / and the realtime socket at /ws.
@@ -142,24 +168,32 @@ func (sv *Server) Run(ctx context.Context) {
 // ---- wire format ----
 
 type inMsg struct {
-	T         string `json:"t"`
-	X         int    `json:"x"`
-	Y         int    `json:"y"`
-	Text      string `json:"text"`
-	Room      string `json:"room"`
-	Emote     string `json:"emote"`
-	On        bool   `json:"on"`
-	Token     string `json:"token"`
-	Username  string `json:"username"`
-	Password  string `json:"password"`
-	BirthYear int    `json:"birthYear"`
+	T         string       `json:"t"`
+	X         int          `json:"x"`
+	Y         int          `json:"y"`
+	Text      string       `json:"text"`
+	Room      string       `json:"room"`
+	Emote     string       `json:"emote"`
+	On        bool         `json:"on"`
+	Token     string       `json:"token"`
+	Username  string       `json:"username"`
+	Password  string       `json:"password"`
+	BirthYear int          `json:"birthYear"`
+	Thread    int64        `json:"thread"`
+	Title     string       `json:"title"`
+	Page      int          `json:"page"`
+	Prop      string       `json:"prop"`
+	Sort      string       `json:"sort"`
+	Value     int          `json:"value"`
+	Style     *store.Style `json:"style"`
 }
 
 type avatarView struct {
 	ID     string      `json:"id"`
 	Name   string      `json:"name"`
-	Color  string      `json:"color"`
+	Style  store.Style `json:"style"`
 	Pos    world.Point `json:"pos"`
+	Seat   string      `json:"seat,omitempty"`
 	Guest  bool        `json:"guest"`
 	Newbie bool        `json:"newbie"`
 	You    bool        `json:"you,omitempty"`
@@ -186,6 +220,7 @@ type roomView struct {
 	Theme string     `json:"theme"`
 	Rows  []string   `json:"rows"`
 	Doors []doorView `json:"doors"`
+	Props []propView `json:"props"`
 }
 
 type roomSummary struct {
@@ -206,14 +241,19 @@ func (sv *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	s := &session{
-		send:     make(chan []byte, sendQueueLen),
-		done:     make(chan struct{}),
-		guestKey: "g:" + hex.EncodeToString(randomBytes(8)),
+		send:      make(chan []byte, sendQueueLen),
+		done:      make(chan struct{}),
+		guestKey:  "g:" + hex.EncodeToString(randomBytes(8)),
+		limiter:   newBucket(chatBurst, chatPerSec),
+		threadLim: newBucket(threadBurst, threadPerSec),
+		replyLim:  newBucket(replyBurst, replyPerSec),
+		useLim:    newBucket(useBurst, usePerSec),
+		voteLim:   newBucket(voteBurst, votePerSec),
+		style:     randomStyle(),
 	}
 	go sv.writeLoop(ctx, conn, s)
 
 	sv.mu.Lock()
-	s.color = avatarColors[int(randomBytes(1)[0])%len(avatarColors)]
 	plaza := sv.rooms[sv.order[0]]
 	sv.enqueue(s, map[string]any{"t": "welcome", "rooms": sv.summariesLocked()})
 	sv.enterLocked(s, plaza, plaza.def.Spawn)
@@ -241,7 +281,7 @@ func (sv *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 			return // too slow to keep up; dropped
 		default:
 		}
-		sv.handle(s, m)
+		sv.handle(ctx, s, m)
 	}
 }
 
@@ -288,20 +328,62 @@ func (sv *Server) broadcastLocked(r *room, v any, except *session) {
 
 // ---- message handling ----
 
-func (sv *Server) handle(s *session, m inMsg) {
-	// Password hashing is slow on purpose, so do it outside the world lock.
+func (sv *Server) handle(ctx context.Context, s *session, m inMsg) {
+	// Password hashing is slow on purpose and the store may be a network
+	// away, so both happen outside the world lock.
 	switch m.T {
 	case "signup":
-		acct, token, recovery, err := sv.accounts.Signup(strings.TrimSpace(m.Username), m.Password, m.BirthYear, sv.opts.Now())
+		sv.mu.Lock()
+		style := s.style // keep the guest's look unless they designed one
+		sv.mu.Unlock()
+		if m.Style != nil {
+			style = *m.Style
+		}
+		acct, token, recovery, err := sv.accounts.Signup(ctx, strings.TrimSpace(m.Username), m.Password, m.BirthYear, style, sv.opts.Now())
 		sv.finishAuth(s, acct, token, recovery, err)
 		return
 	case "login":
-		acct, token, err := sv.accounts.Login(strings.TrimSpace(m.Username), m.Password)
+		acct, token, err := sv.accounts.Login(ctx, strings.TrimSpace(m.Username), m.Password, sv.opts.Now())
 		sv.finishAuth(s, acct, token, "", err)
+		if err == nil {
+			sv.sendNotes(ctx, s, acct)
+		}
 		return
 	case "resume":
-		if acct := sv.accounts.ByToken(m.Token); acct != nil {
-			sv.finishAuth(s, acct, m.Token, "", nil)
+		acct, err := sv.accounts.ByToken(ctx, m.Token)
+		if acct != nil || err != nil {
+			sv.finishAuth(s, acct, m.Token, "", err)
+		}
+		if acct != nil {
+			sv.sendNotes(ctx, s, acct)
+		}
+		return
+	case "board":
+		sv.handleBoard(ctx, s, m.Room, m.Page, store.ThreadSort(m.Sort))
+		return
+	case "thread":
+		sv.handleThread(ctx, s, m.Thread)
+		return
+	case "post_thread":
+		sv.handlePostThread(ctx, s, m.Title, m.Text)
+		return
+	case "post_reply":
+		sv.handlePostReply(ctx, s, m.Thread, m.Text)
+		return
+	case "vote":
+		sv.handleVote(ctx, s, m.Thread, m.Value)
+		return
+	case "notes_read":
+		sv.handleNotesRead(ctx, s)
+		return
+	case "chat":
+		sv.mu.Lock()
+		saved, ok := sv.chatLocked(s, m.Text)
+		sv.mu.Unlock()
+		if ok {
+			if err := sv.store.AddMessage(ctx, saved); err != nil {
+				log.Printf("save message: %v", err)
+			}
 		}
 		return
 	}
@@ -314,8 +396,8 @@ func (sv *Server) handle(s *session, m inMsg) {
 	switch m.T {
 	case "walk":
 		sv.walkLocked(s, world.Point{X: m.X, Y: m.Y})
-	case "chat":
-		sv.chatLocked(s, m.Text)
+	case "use":
+		sv.handleUseLocked(s, m.Prop)
 	case "emote":
 		if allowedEmotes[m.Emote] {
 			sv.broadcastLocked(s.room, map[string]any{"t": "emote", "id": s.pubID, "emote": m.Emote}, nil)
@@ -331,13 +413,13 @@ func (sv *Server) handle(s *session, m inMsg) {
 		}
 	case "peek":
 		if r, ok := sv.rooms[m.Room]; ok {
-			recent := r.history[max(0, len(r.history)-peekRecent):]
+			recent := nonNil(r.history[max(0, len(r.history)-peekRecent):])
 			sv.enqueue(s, map[string]any{"t": "peek", "room": r.def.ID, "name": r.def.Name, "count": len(r.sessions), "recent": recent})
 		}
 	}
 }
 
-func (sv *Server) finishAuth(s *session, acct *Account, token, recovery string, err error) {
+func (sv *Server) finishAuth(s *session, acct *store.Account, token, recovery string, err error) {
 	sv.mu.Lock()
 	defer sv.mu.Unlock()
 	if err != nil {
@@ -345,53 +427,101 @@ func (sv *Server) finishAuth(s *session, acct *Account, token, recovery string, 
 		return
 	}
 	s.acct = acct
+	s.style = acct.Style
 	sv.enqueue(s, map[string]any{
 		"t": "authed", "username": acct.Username, "token": token,
-		"recoveryCode": recovery, "ageBand": acct.AgeBand(sv.opts.Now()),
+		"recoveryCode": recovery, "ageBand": ageBand(acct.BirthYear, sv.opts.Now()),
+		"style": acct.Style,
 	})
 	if s.room != nil {
-		// Their anonymous tag changes from "Visitor" to "Anonymous".
+		// Their anonymous tag changes from "Visitor" to "Anonymous", and
+		// they take on their account's look.
 		sv.broadcastLocked(s.room, map[string]any{"t": "update", "avatar": sv.viewLocked(s)}, nil)
 	}
 }
 
 func (sv *Server) walkLocked(s *session, to world.Point) {
-	path := world.FindPath(s.room.def, s.pos, to)
+	path := sv.routeLocked(s, to)
 	if path == nil {
 		return
 	}
+	sv.standUpLocked(s)
+	sv.setPathLocked(s, path)
+}
+
+// routeLocked finds a path for s to `to`. Someone already walking first
+// finishes the step they're on, so changing course mid-stride carries on
+// smoothly instead of snapping back to the last tile. It returns nil if
+// there's no way there.
+func (sv *Server) routeLocked(s *session, to world.Point) []world.Point {
+	if len(s.path) == 0 {
+		return world.FindPath(s.room.def, s.pos, to)
+	}
+	next := s.path[0]
+	if s.room.def.DoorAt(next) != nil {
+		return nil // already stepping through a door
+	}
+	if next == to {
+		return []world.Point{next}
+	}
+	rest := world.FindPath(s.room.def, next, to)
+	if rest == nil {
+		return nil
+	}
+	return append([]world.Point{next}, rest...)
+}
+
+// setPathLocked starts s walking along path and tells the room. A path
+// that begins with the step s is already taking keeps its progress.
+func (sv *Server) setPathLocked(s *session, path []world.Point) {
+	if len(s.path) == 0 || len(path) == 0 || path[0] != s.path[0] {
+		s.walked = 0
+	}
 	s.path = path
-	s.walked = 0
 	sv.broadcastLocked(s.room, map[string]any{
 		"t": "path", "id": s.pubID, "from": s.pos, "path": path,
-		"stepMs": sv.opts.Step.Milliseconds(),
+		"stepMs": sv.opts.Step.Milliseconds(), "walkedMs": s.walked.Milliseconds(),
 	}, nil)
 }
 
-func (sv *Server) chatLocked(s *session, text string) {
+// stepTime is how long a step from a to b takes; diagonals cover more
+// ground, so they take longer.
+func (sv *Server) stepTime(a, b world.Point) time.Duration {
+	if world.Diagonal(a, b) {
+		return time.Duration(float64(sv.opts.Step) * math.Sqrt2)
+	}
+	return sv.opts.Step
+}
+
+// chatLocked posts a message to s's room and returns it for saving, or
+// false if it was refused.
+func (sv *Server) chatLocked(s *session, text string) (store.Message, bool) {
+	if s.room == nil {
+		return store.Message{}, false
+	}
 	if s.acct == nil {
 		// Guests can look around, walk and wave; talking needs a name.
 		sv.enqueue(s, map[string]any{"t": "need_account"})
-		return
+		return store.Message{}, false
 	}
 	text = strings.TrimSpace(text)
 	if text == "" || !utf8.ValidString(text) {
-		return
+		return store.Message{}, false
 	}
 	if utf8.RuneCountInString(text) > maxChatRunes {
 		sv.enqueue(s, map[string]any{"t": "notice", "message": fmt.Sprintf("Messages can be up to %d characters.", maxChatRunes)})
-		return
+		return store.Message{}, false
 	}
 	now := sv.opts.Now()
-	if s.acct.AgeBand(now) != BandAdult {
+	if ageBand(s.acct.BirthYear, now) != BandAdult {
 		if reason := checkPersonalInfo(text); reason != "" {
 			sv.enqueue(s, map[string]any{"t": "notice", "message": reason})
-			return
+			return store.Message{}, false
 		}
 	}
 	if !s.limiter.allow(now) {
 		sv.enqueue(s, map[string]any{"t": "notice", "message": "Whoa, slow down a little."})
-		return
+		return store.Message{}, false
 	}
 
 	msg := chatMsg{From: s.pubID, Name: sv.displayNameLocked(s), Text: text, TS: now, Newbie: sv.newbieLocked(s)}
@@ -406,6 +536,10 @@ func (sv *Server) chatLocked(s *session, text string) {
 		s.sentFirst = true
 		sv.enqueue(s, map[string]any{"t": "first_message"})
 	}
+	return store.Message{
+		Room: r.def.ID, AccountID: s.acct.ID, AvatarID: msg.From, Name: msg.Name,
+		Text: msg.Text, Newbie: msg.Newbie, SentAt: msg.TS,
+	}, true
 }
 
 // ---- rooms and movement ----
@@ -420,6 +554,7 @@ func (sv *Server) tick(dt time.Duration) {
 		back world.Point
 	}
 	var transfers []transfer
+	var arrived []*session
 	for _, id := range sv.order {
 		r := sv.rooms[id]
 		for s := range r.sessions {
@@ -427,19 +562,27 @@ func (sv *Server) tick(dt time.Duration) {
 				continue
 			}
 			s.walked += dt
-			for s.walked >= sv.opts.Step && len(s.path) > 0 {
-				s.walked -= sv.opts.Step
+			door := false
+			for len(s.path) > 0 && s.walked >= sv.stepTime(s.pos, s.path[0]) {
+				s.walked -= sv.stepTime(s.pos, s.path[0])
 				prev := s.pos
 				s.pos, s.path = s.path[0], s.path[1:]
 				if d := r.def.DoorAt(s.pos); d != nil {
 					transfers = append(transfers, transfer{s, d, prev})
 					s.path = nil
+					door = true
 				}
 			}
 			if len(s.path) == 0 {
 				s.walked = 0
+				if !door {
+					arrived = append(arrived, s)
+				}
 			}
 		}
+	}
+	for _, s := range arrived {
+		sv.arrivedLocked(s)
 	}
 	for _, t := range transfers {
 		target := sv.rooms[t.door.Target]
@@ -467,6 +610,8 @@ func (sv *Server) enterLocked(s *session, r *room, at world.Point) {
 	s.pos = sv.freeTileNearLocked(r, at)
 	s.path = nil
 	s.walked = 0
+	s.seat = ""
+	s.pendingUse = ""
 	s.pubID = hex.EncodeToString(randomBytes(6))
 	r.sessions[s] = struct{}{}
 
@@ -484,10 +629,11 @@ func (sv *Server) enterLocked(s *session, r *room, at world.Point) {
 		"t": "room",
 		"room": roomView{
 			ID: r.def.ID, Name: r.def.Name, Kind: r.def.Kind, Theme: r.def.Theme, Rows: r.def.Rows, Doors: doors,
+			Props: r.propViews(),
 		},
 		"you":     s.pubID,
 		"avatars": avatars,
-		"history": r.history,
+		"history": nonNil(r.history),
 	})
 	sv.broadcastLocked(r, map[string]any{"t": "enter", "avatar": sv.viewLocked(s)}, s)
 }
@@ -499,17 +645,26 @@ func (sv *Server) freeTileNearLocked(r *room, p world.Point) world.Point {
 	for o := range r.sessions {
 		taken[o.pos] = true
 	}
-	for radius := 0; radius <= 3; radius++ {
+	for radius := 0; radius <= r.def.W()+r.def.H(); radius++ { // widen until there's room
 		for dy := -radius; dy <= radius; dy++ {
 			for dx := -radius; dx <= radius; dx++ {
 				q := world.Point{X: p.X + dx, Y: p.Y + dy}
-				if max(abs(dx), abs(dy)) == radius && r.def.Floor(q) && r.def.DoorAt(q) == nil && !taken[q] {
+				if max(abs(dx), abs(dy)) == radius && r.def.Standable(q) && !taken[q] {
 					return q
 				}
 			}
 		}
 	}
 	return p
+}
+
+// nonNil makes an empty history encode as [] rather than null, which clients
+// would have to special-case.
+func nonNil(h []chatMsg) []chatMsg {
+	if h == nil {
+		return []chatMsg{}
+	}
+	return h
 }
 
 func abs(n int) int {
@@ -558,7 +713,7 @@ func (sv *Server) summariesLocked() []roomSummary {
 
 func (sv *Server) viewLocked(s *session) avatarView {
 	return avatarView{
-		ID: s.pubID, Name: sv.displayNameLocked(s), Color: s.color, Pos: s.pos,
+		ID: s.pubID, Name: sv.displayNameLocked(s), Style: s.style, Pos: s.pos, Seat: s.seat,
 		Guest: s.acct == nil, Newbie: sv.newbieLocked(s),
 	}
 }

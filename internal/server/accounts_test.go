@@ -1,38 +1,46 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
+
+	"habit/internal/store"
 )
 
 var testNow = time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
 
 func TestSignupAndLogin(t *testing.T) {
-	s := NewAccounts()
-	acct, token, recovery, err := s.Signup("pixel_fan", "correct horse battery", 1995, testNow)
+	ctx := context.Background()
+	s := NewAccounts(store.NewMemory())
+	acct, token, recovery, err := s.Signup(ctx, "pixel_fan", "correct horse battery", 1995, store.Style{}, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if token == "" || len(recovery) != 19 {
 		t.Fatalf("want token and XXXX-XXXX-XXXX-XXXX recovery code, got %q %q", token, recovery)
 	}
-	if s.ByToken(token) != acct {
-		t.Fatal("token should resume the account")
+	if got, err := s.ByToken(ctx, token); err != nil || got == nil || got.ID != acct.ID {
+		t.Fatalf("token should resume the account, got %+v, %v", got, err)
 	}
-	if _, _, err := s.Login("PIXEL_FAN", "correct horse battery"); err != nil {
+	if got, err := s.ByToken(ctx, "not a token"); got != nil || err != nil {
+		t.Fatalf("unknown token should resume nothing, got %+v, %v", got, err)
+	}
+	if _, _, err := s.Login(ctx, "PIXEL_FAN", "correct horse battery", testNow); err != nil {
 		t.Fatalf("login should be case-insensitive on username: %v", err)
 	}
-	if _, _, err := s.Login("pixel_fan", "wrong password!!"); !errors.Is(err, ErrBadLogin) {
+	if _, _, err := s.Login(ctx, "pixel_fan", "wrong password!!", testNow); !errors.Is(err, ErrBadLogin) {
 		t.Fatalf("want ErrBadLogin, got %v", err)
 	}
-	if _, _, err := s.Login("nobody", "whatever12345"); !errors.Is(err, ErrBadLogin) {
+	if _, _, err := s.Login(ctx, "nobody", "whatever12345", testNow); !errors.Is(err, ErrBadLogin) {
 		t.Fatalf("want ErrBadLogin for unknown user, got %v", err)
 	}
 }
 
 func TestSignupValidation(t *testing.T) {
-	s := NewAccounts()
+	ctx := context.Background()
+	s := NewAccounts(store.NewMemory())
 	cases := []struct {
 		name, user, pass string
 		year             int
@@ -46,15 +54,15 @@ func TestSignupValidation(t *testing.T) {
 		{"future year", "kiddo", "longenough123", 2030, ErrBirthYear},
 	}
 	for _, c := range cases {
-		if _, _, _, err := s.Signup(c.user, c.pass, c.year, testNow); !errors.Is(err, c.want) {
+		if _, _, _, err := s.Signup(ctx, c.user, c.pass, c.year, store.Style{}, testNow); !errors.Is(err, c.want) {
 			t.Errorf("%s: want %v, got %v", c.name, c.want, err)
 		}
 	}
 
-	if _, _, _, err := s.Signup("taken", "longenough123", 1990, testNow); err != nil {
+	if _, _, _, err := s.Signup(ctx, "taken", "longenough123", 1990, store.Style{}, testNow); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := s.Signup("TAKEN", "longenough123", 1990, testNow); !errors.Is(err, ErrUsernameTaken) {
+	if _, _, _, err := s.Signup(ctx, "TAKEN", "longenough123", 1990, store.Style{}, testNow); !errors.Is(err, ErrUsernameTaken) {
 		t.Fatalf("want ErrUsernameTaken, got %v", err)
 	}
 }
@@ -111,7 +119,7 @@ func TestAnonTag(t *testing.T) {
 }
 
 func TestBucket(t *testing.T) {
-	var b bucket
+	b := newBucket(chatBurst, chatPerSec)
 	for i := 0; i < chatBurst; i++ {
 		if !b.allow(testNow) {
 			t.Fatalf("burst message %d should pass", i)

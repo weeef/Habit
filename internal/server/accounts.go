@@ -1,17 +1,21 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base32"
 	"encoding/hex"
 	"errors"
+	"log"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"golang.org/x/crypto/argon2"
+
+	"habit/internal/store"
 )
 
 // Age bands from PLAN.md §6.1.
@@ -30,6 +34,8 @@ var (
 	ErrTooYoung        = errors.New("sorry, you need to be 13 or older to chat on Habit")
 	ErrBirthYear       = errors.New("please enter a real birth year")
 	ErrBadLogin        = errors.New("wrong username or password")
+	ErrUnavailable     = errors.New("something went wrong on our side, please try again")
+	ErrStyle           = errors.New("please pick your character's look again")
 )
 
 var usernameRe = regexp.MustCompile(`^[A-Za-z0-9_]{3,20}$`)
@@ -39,21 +45,6 @@ var reservedNames = map[string]bool{
 	"anonymous": true, "visitor": true, "admin": true, "mod": true,
 	"moderator": true, "staff": true, "habit": true, "system": true,
 }
-
-// Account is a username + password account. There is deliberately no email
-// or phone field (PLAN.md §5.5).
-type Account struct {
-	ID           string
-	Username     string
-	BirthYear    int
-	CreatedAt    time.Time
-	salt         []byte
-	hash         []byte
-	recoveryHash []byte
-}
-
-// AgeBand returns the account's age band as of now.
-func (a *Account) AgeBand(now time.Time) string { return ageBand(a.BirthYear, now) }
 
 func ageBand(birthYear int, now time.Time) string {
 	// Birth year only, so the age may be a year high; round towards the
@@ -69,21 +60,22 @@ func ageBand(birthYear int, now time.Time) string {
 	}
 }
 
-// Accounts is an in-memory account store. The prototype keeps nothing on
-// disk; a restart forgets everyone.
+// Accounts handles signup, login and sessions on top of a store.
 type Accounts struct {
-	mu     sync.Mutex
-	byName map[string]*Account
-	tokens map[string]*Account
+	store store.Store
 }
 
-func NewAccounts() *Accounts {
-	return &Accounts{byName: map[string]*Account{}, tokens: map[string]*Account{}}
+func NewAccounts(st store.Store) *Accounts {
+	return &Accounts{store: st}
 }
 
-// Signup creates an account and returns it with a session token and a
-// one-time recovery code (the only way back in without email).
-func (s *Accounts) Signup(username, password string, birthYear int, now time.Time) (acct *Account, token, recovery string, err error) {
+// Signup creates an account with the character the user designed and
+// returns it with a session token and a one-time recovery code (the only way
+// back in without email).
+func (s *Accounts) Signup(ctx context.Context, username, password string, birthYear int, style store.Style, now time.Time) (acct *store.Account, token, recovery string, err error) {
+	if !validStyle(style) {
+		return nil, "", "", ErrStyle
+	}
 	if !usernameRe.MatchString(username) || reservedNames[strings.ToLower(username)] {
 		return nil, "", "", ErrUsernameInvalid
 	}
@@ -101,57 +93,83 @@ func (s *Accounts) Signup(username, password string, birthYear int, now time.Tim
 
 	salt := randomBytes(16)
 	recovery = recoveryCode()
-	acct = &Account{
+	acct = &store.Account{
 		ID:           hex.EncodeToString(randomBytes(8)),
 		Username:     username,
 		BirthYear:    birthYear,
 		CreatedAt:    now,
-		salt:         salt,
-		hash:         hashSecret(password, salt),
-		recoveryHash: hashSecret(recovery, salt),
+		Salt:         salt,
+		PasswordHash: hashSecret(password, salt),
+		RecoveryHash: hashSecret(recovery, salt),
+		Style:        style,
 	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	key := strings.ToLower(username)
-	if _, taken := s.byName[key]; taken {
-		return nil, "", "", ErrUsernameTaken
+	if err := s.store.CreateAccount(ctx, acct); err != nil {
+		if errors.Is(err, store.ErrUsernameTaken) {
+			return nil, "", "", ErrUsernameTaken
+		}
+		return nil, "", "", unavailable("create account", err)
 	}
-	s.byName[key] = acct
-	token = s.newTokenLocked(acct)
+	token, err = s.newSession(ctx, acct, now)
+	if err != nil {
+		return nil, "", "", err
+	}
 	return acct, token, recovery, nil
 }
 
 // Login checks a username and password and returns a new session token.
-func (s *Accounts) Login(username, password string) (*Account, string, error) {
-	s.mu.Lock()
-	acct := s.byName[strings.ToLower(username)]
-	s.mu.Unlock()
-	if acct == nil {
+func (s *Accounts) Login(ctx context.Context, username, password string, now time.Time) (*store.Account, string, error) {
+	acct, err := s.store.AccountByUsername(ctx, username)
+	if errors.Is(err, store.ErrNotFound) {
 		// Burn the same time as a real check so timing doesn't reveal
 		// which usernames exist.
 		hashSecret(password, make([]byte, 16))
 		return nil, "", ErrBadLogin
 	}
-	if subtle.ConstantTimeCompare(hashSecret(password, acct.salt), acct.hash) != 1 {
+	if err != nil {
+		return nil, "", unavailable("login", err)
+	}
+	if subtle.ConstantTimeCompare(hashSecret(password, acct.Salt), acct.PasswordHash) != 1 {
 		return nil, "", ErrBadLogin
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return acct, s.newTokenLocked(acct), nil
+	token, err := s.newSession(ctx, acct, now)
+	if err != nil {
+		return nil, "", err
+	}
+	return acct, token, nil
 }
 
-// ByToken resumes a session from a token, or returns nil.
-func (s *Accounts) ByToken(token string) *Account {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.tokens[token]
+// ByToken resumes a session from a token. It returns nil, nil for an unknown
+// token.
+func (s *Accounts) ByToken(ctx context.Context, token string) (*store.Account, error) {
+	acct, err := s.store.AccountBySession(ctx, hashToken(token))
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, unavailable("resume session", err)
+	}
+	return acct, nil
 }
 
-func (s *Accounts) newTokenLocked(acct *Account) string {
+func (s *Accounts) newSession(ctx context.Context, acct *store.Account, now time.Time) (string, error) {
 	t := hex.EncodeToString(randomBytes(24))
-	s.tokens[t] = acct
-	return t
+	if err := s.store.CreateSession(ctx, hashToken(t), acct.ID, now); err != nil {
+		return "", unavailable("create session", err)
+	}
+	return t, nil
+}
+
+// unavailable logs a storage failure and returns the error users see.
+func unavailable(op string, err error) error {
+	log.Printf("%s: %v", op, err)
+	return ErrUnavailable
+}
+
+// hashToken is how session tokens are stored, so a leaked database doesn't
+// hand out working logins. Tokens are long and random, so no salt is needed.
+func hashToken(token string) []byte {
+	h := sha256.Sum256([]byte(token))
+	return h[:]
 }
 
 func hashSecret(secret string, salt []byte) []byte {

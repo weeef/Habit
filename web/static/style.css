@@ -1,32 +1,55 @@
+/* Nunito (SIL Open Font License, see fonts/OFL.txt), bundled so no font
+   requests leave Habit. */
+@font-face {
+  font-family: "Nunito";
+  src: url("fonts/nunito-latin.woff2") format("woff2");
+  font-weight: 200 1000;
+  font-display: swap;
+}
+
+/* Two layers of design:
+   - The HUD over the world borrows New York transit signage: black enamel
+     signs with a thin white stripe, white rounded type, coloured line
+     bullets, and taxi yellow for the action you'd take. It's dark in both
+     modes so the pastel world stays the brightest thing on screen.
+   - Dialogs (sign up, the board) are paper: light or dark with the page. */
 :root {
-  --bg: #f4efe6;
-  --panel: #fffaf2;
-  --ink: #2a2438;
-  --muted: #6e6680;
-  --line: #e2d8c8;
-  --accent: #6b4de6;
+  --enamel: #1f1b2e;
+  --enamel-glass: rgb(31 27 46 / 0.88);
+  --sign-ink: #ffffff;
+  --sign-muted: #c9c1d9;
+  --sign-line: rgb(255 255 255 / 0.16);
+  --taxi: #ffcd38;
+  --taxi-ink: #2a2140;
+  --pink: #ff6fae;
+  --hud-shadow: 0 6px 24px rgb(20 10 40 / 0.28);
+
+  --bg: #fff6fa;
+  --panel: #ffffff;
+  --ink: #4a3b5c;
+  --muted: #8f7d9e;
+  --line: #f1dce8;
+  --accent: #ff6fae;
   --accent-ink: #ffffff;
-  --floor-a: #d9cbb3;
-  --floor-b: #cfbfa4;
-  --floor-edge: #b9a684;
-  --void: #e9e1d3;
-  --error: #c0392b;
+  --floor-a: #fde8f1; /* indoor rooms' floor; hex only (app.js shades it) */
+  --floor-b: #fbe1ec;
+  --void: #fff1f7;
+  --error: #e5484d;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #1d1b2e;
-    --panel: #26233b;
-    --ink: #eeeaf7;
-    --muted: #a59fbd;
-    --line: #3a3655;
-    --accent: #9b85ff;
-    --accent-ink: #15131f;
-    --floor-a: #4a4466;
-    --floor-b: #433d5d;
-    --floor-edge: #2f2a47;
-    --void: #1d1b2e;
-    --error: #ff7b6b;
+    --bg: #1d1626;
+    --panel: #271e33;
+    --ink: #f7ebf6;
+    --muted: #bba7c9;
+    --line: #3b2e4a;
+    --accent: #ff8cc4;
+    --accent-ink: #2a1730;
+    --floor-a: #3f3152;
+    --floor-b: #3b2e4d;
+    --void: #1a1322;
+    --error: #ff7a93;
     color-scheme: dark;
   }
 }
@@ -35,120 +58,269 @@
 html, body { height: 100%; }
 body {
   margin: 0;
-  background: var(--bg);
+  overflow: hidden;
+  background: var(--void);
   color: var(--ink);
-  font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
-  display: flex;
-  flex-direction: column;
+  font: 600 15px/1.45 "Nunito", "Segoe UI Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
+[hidden] { display: none !important; }
 
+/* Buttons: taxi yellow for the main action, outlines for the rest. */
 button {
   font: inherit;
+  font-weight: 800;
   border: 0;
-  border-radius: 10px;
-  padding: 8px 14px;
-  background: var(--accent);
-  color: var(--accent-ink);
+  border-radius: 999px;
+  padding: 8px 16px;
+  background: var(--taxi);
+  color: var(--taxi-ink);
   cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, transform 0.15s cubic-bezier(.34,1.56,.64,1), box-shadow 0.15s;
 }
-button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
-button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:hover { box-shadow: 0 4px 14px rgb(255 205 56 / 0.4); }
+button:active { transform: scale(0.97); }
+button.ghost { background: transparent; color: var(--ink); border: 2px solid var(--line); }
+button.ghost:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); box-shadow: none; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, .station:focus-visible { outline: 3px solid var(--taxi); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--line);
-}
-.brand { font-weight: 800; font-size: 22px; letter-spacing: -0.5px; color: var(--accent); }
-.where { flex: 1; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.top-actions { display: flex; gap: 8px; }
-
-.layout { flex: 1; display: flex; min-height: 0; }
-.stage { position: relative; flex: 1; min-width: 0; background: var(--void); }
+/* ---- the world, full screen ---- */
+.layout { position: fixed; inset: 0; }
+.stage { position: absolute; inset: 0; background: var(--void); }
 #world { display: block; width: 100%; height: 100%; cursor: pointer; touch-action: manipulation; }
 
-.hint {
-  position: absolute; left: 12px; top: 12px;
-  background: var(--panel); color: var(--muted);
-  padding: 6px 10px; border-radius: 8px; font-size: 13px;
-  border: 1px solid var(--line);
+/* ---- enamel signs: the HUD ---- */
+.station, .sign-chip, .sign, .hint, .emotes, .tooltip, .toast {
+  background: var(--enamel-glass);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  color: var(--sign-ink);
+  box-shadow: var(--hud-shadow);
 }
-.emotes { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; gap: 6px; }
-.emotes button { background: var(--panel); border: 1px solid var(--line); font-size: 20px; padding: 6px 10px; }
+
+.hud {
+  position: absolute; top: 12px; left: 12px; right: 12px; z-index: 5;
+  display: flex; align-items: flex-start; gap: 10px; pointer-events: none;
+}
+.hud > * { pointer-events: auto; }
+.brand {
+  align-self: center; padding: 0 4px;
+  font-weight: 1000; font-size: 26px; letter-spacing: -1px; color: var(--enamel);
+  text-shadow: 0 2px 0 #fff, 0 0 18px rgb(255 255 255 / 0.9);
+}
+
+/* The station sign: where you are. The white stripe across the top is the
+   detail every New York subway sign has. */
+.station {
+  position: relative; display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px 9px 10px; border-radius: 14px; background: var(--enamel); text-align: left;
+}
+.station::before {
+  content: ""; position: absolute; left: 12px; right: 12px; top: 5px; height: 2px;
+  background: rgb(255 255 255 / 0.85); border-radius: 2px;
+}
+.station:hover { box-shadow: var(--hud-shadow), 0 0 0 2px var(--taxi); }
+.bullet {
+  width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 17px; background: #e5484d; flex: none;
+}
+.station-name { font-size: 20px; font-weight: 900; letter-spacing: -0.2px; line-height: 1.1; white-space: nowrap; }
+.station-count { font-size: 13px; color: var(--sign-muted); font-weight: 700; white-space: nowrap; }
+
+.hud-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.sign-chip {
+  padding: 8px 14px; border-radius: 999px; font-weight: 800; font-size: 14px;
+  border: 1px solid var(--sign-line);
+}
+.sign-chip:hover { background: var(--enamel); box-shadow: var(--hud-shadow), 0 0 0 2px var(--taxi); }
+.sign-chip.small { padding: 4px 10px; font-size: 12px; box-shadow: none; }
+.time-chip { font-variant-numeric: tabular-nums; }
+.bell { position: relative; }
+.badge {
+  position: absolute; top: -4px; right: -4px; min-width: 18px; padding: 0 5px;
+  background: var(--pink); color: #fff; border-radius: 9px; font-size: 11px; line-height: 18px; text-align: center;
+}
+
+.hint {
+  position: absolute; left: 12px; top: 84px; z-index: 3;
+  color: var(--sign-muted); padding: 6px 12px; border-radius: 999px; font-size: 13px;
+}
+.emotes {
+  position: absolute; bottom: 14px; z-index: 3;
+  left: calc((100% - var(--inset-r, 0px)) / 2); transform: translateX(-50%);
+  display: flex; gap: 2px; padding: 4px; border-radius: 999px;
+}
+.emotes button { background: transparent; font-size: 20px; padding: 6px 10px; border-radius: 999px; }
+.emotes button:hover { background: rgb(255 255 255 / 0.12); box-shadow: none; transform: scale(1.22) rotate(-6deg); }
 
 .tooltip {
-  position: absolute; max-width: 260px; pointer-events: none;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-  padding: 8px 10px; font-size: 13px; box-shadow: 0 6px 20px rgb(0 0 0 / 0.15);
+  position: absolute; max-width: 260px; pointer-events: none; z-index: 6;
+  border-radius: 12px; padding: 10px 12px; font-size: 13px;
 }
 .tooltip strong { display: block; margin-bottom: 4px; }
-.tooltip p { margin: 2px 0; color: var(--muted); }
+.tooltip p { margin: 2px 0; color: var(--sign-muted); }
 
+/* ---- chat: an enamel information panel on the right ---- */
 .side {
-  width: 340px; flex: none; display: flex; flex-direction: column; gap: 12px;
-  padding: 12px; border-left: 1px solid var(--line); background: var(--bg); min-height: 0;
+  position: absolute; right: 12px; top: 72px; bottom: 12px; width: 360px; z-index: 4;
+  display: flex; flex-direction: column; min-height: 0;
 }
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
-.panel h2 { margin: 0 0 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
-
-.nav { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-.nav button {
-  width: 100%; display: flex; justify-content: space-between;
-  background: transparent; color: var(--ink); padding: 6px 8px; text-align: left;
+.sign {
+  position: relative; border-radius: 20px; padding: 18px 14px 12px; border: 1px solid var(--sign-line);
 }
-.nav button[aria-current="true"] { background: color-mix(in srgb, var(--accent) 15%, transparent); }
-.nav .count { color: var(--muted); }
-
+.sign::before {
+  content: ""; position: absolute; left: 16px; right: 16px; top: 7px; height: 2px;
+  background: rgb(255 255 255 / 0.7); border-radius: 2px;
+}
 .chat { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.panel-head h2 { margin: 0; font-size: 18px; font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pane { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
 .log { list-style: none; margin: 0 0 8px; padding: 0; flex: 1; overflow-y: auto; min-height: 120px; }
-.log li { padding: 3px 0; overflow-wrap: anywhere; }
-.log .name { font-weight: 600; margin-right: 6px; }
-.log .new { font-size: 11px; background: #3fb27f; color: #fff; border-radius: 6px; padding: 0 5px; margin-right: 6px; }
-.log .empty { color: var(--muted); font-style: italic; }
+.log li { padding: 4px 0; overflow-wrap: anywhere; }
+.log .name { font-weight: 900; margin-right: 6px; color: #ffb3d4; }
+.log .new { font-size: 11px; font-weight: 800; background: #3cc28f; color: #fff; border-radius: 999px; padding: 0 7px; margin-right: 6px; }
+.log .empty { color: var(--sign-muted); font-style: italic; }
 
 .prompts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-.prompts button { background: transparent; color: var(--ink); border: 1px solid var(--line); padding: 4px 10px; font-size: 13px; }
+.prompts button { background: transparent; color: var(--sign-ink); border: 1px solid var(--sign-line); padding: 4px 10px; font-size: 13px; }
+.prompts button:hover { background: rgb(255 255 255 / 0.1); box-shadow: none; }
 
 .say { display: flex; gap: 6px; }
-.say input, .auth input {
-  flex: 1; min-width: 0; font: inherit; padding: 8px 10px; border-radius: 10px;
-  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+.say input, .say textarea, .auth input, .auth textarea {
+  flex: 1; min-width: 0; font: inherit; padding: 9px 14px; border-radius: 999px;
+  border: 2px solid var(--line); background: var(--bg); color: var(--ink);
 }
-.named { display: flex; gap: 6px; align-items: center; margin-top: 8px; font-size: 13px; color: var(--muted); }
+.sign .say input { background: #fff; color: var(--taxi-ink); border-color: transparent; }
+.say textarea, .auth textarea { border-radius: 14px; resize: vertical; }
+.named { display: flex; gap: 6px; align-items: center; margin-top: 8px; font-size: 13px; color: var(--sign-muted); }
 
-dialog { border: 1px solid var(--line); border-radius: 16px; padding: 0; background: var(--panel); color: var(--ink); max-width: min(420px, calc(100vw - 32px)); }
-dialog::backdrop { background: rgb(0 0 0 / 0.4); }
-.auth { padding: 20px; display: grid; gap: 10px; }
-.auth h2 { margin: 0; }
+.chat-open { position: absolute; right: 12px; bottom: 14px; z-index: 4; }
+
+/* ---- dialogs: paper ---- */
+dialog {
+  border: 0; border-radius: 26px; padding: 0; background: var(--panel); color: var(--ink);
+  max-width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto;
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.3);
+}
+dialog::backdrop { background: rgb(20 12 40 / 0.4); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.auth { padding: 22px; display: grid; gap: 10px; }
+.auth h2 { margin: 0; font-weight: 900; }
 .auth label { display: grid; gap: 4px; font-size: 14px; }
 .muted { color: var(--muted); margin: 0; }
 .error { color: var(--error); margin: 0; min-height: 1.2em; }
 .row { display: flex; justify-content: flex-end; gap: 8px; }
 .tabs { display: flex; gap: 6px; }
-.tabs button { background: transparent; color: var(--muted); border: 1px solid var(--line); }
-.tabs button[aria-selected="true"] { color: var(--ink); border-color: var(--accent); }
-.auth.login .signup-only { display: none; }
+.tabs button { background: transparent; color: var(--muted); border: 2px solid var(--line); }
+.tabs button[aria-selected="true"] { color: var(--ink); border-color: var(--taxi); background: rgb(255 205 56 / 0.18); }
+.auth.login .signup-only { display: none !important; }
 .code { font: 600 20px/1.2 ui-monospace, monospace; letter-spacing: 1px; text-align: center; padding: 12px; background: var(--bg); border-radius: 10px; margin: 0; }
 
-.toasts { position: fixed; left: 50%; top: 64px; transform: translateX(-50%); display: grid; gap: 6px; z-index: 10; }
-.toast { background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 10px; font-size: 14px; max-width: calc(100vw - 32px); }
+/* Character creator on signup. */
+.creator {
+  display: grid; grid-template-columns: 110px 1fr; gap: 10px; align-items: center;
+  border: 2px solid var(--line); border-radius: 18px; padding: 8px 12px 12px; margin: 0;
+}
+.creator legend { font-weight: 900; padding: 0 6px; }
+#creatorPreview { width: 110px; height: 130px; }
+.creator-rows { display: grid; gap: 8px; }
+.swatches, .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.swatch {
+  width: 24px; height: 24px; padding: 0; border-radius: 50%;
+  border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--line);
+}
+.swatch[aria-checked="true"] { box-shadow: 0 0 0 3px var(--taxi-ink); transform: scale(1.12); }
+.chip { padding: 3px 10px; font-size: 12px; background: transparent; color: var(--ink); border: 2px solid var(--line); }
+.chip[aria-pressed="true"] { border-color: var(--taxi); background: rgb(255 205 56 / 0.22); }
+@media (max-width: 420px) {
+  .creator { grid-template-columns: 1fr; justify-items: center; }
+}
 
-/* List view: same rooms, no world rendering. */
+/* The board opens in the middle of the screen. */
+.board-dialog { width: min(760px, calc(100vw - 32px)); max-width: none; height: min(82dvh, 760px); }
+.board-dialog[open] { display: flex; }
+.board-shell { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 18px 20px 20px; gap: 10px; }
+.board-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.board-head h2 { margin: 0; font-size: 22px; font-weight: 900; }
+.board-head .close { padding: 6px 12px; }
+.board-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.sorts { display: flex; flex-wrap: wrap; gap: 6px; }
+.sorts button { padding: 5px 12px; font-size: 13px; background: transparent; color: var(--muted); border: 2px solid var(--line); }
+.sorts button[aria-selected="true"] { color: var(--ink); border-color: var(--taxi); background: rgb(255 205 56 / 0.2); }
+
+.threads, .replies, .notes { list-style: none; margin: 0; padding: 0; }
+.threads { flex: 1; overflow-y: auto; min-height: 120px; }
+.threads li { display: flex; align-items: stretch; gap: 8px; border-bottom: 1px solid var(--line); }
+.threads li .thread-open, .notes li button {
+  width: 100%; display: grid; gap: 2px; text-align: left;
+  background: transparent; color: var(--ink); padding: 8px; border-radius: 0;
+}
+.threads li .thread-open { flex: 1; min-width: 0; }
+.notes li button { border-bottom: 1px solid var(--line); }
+.threads li .thread-open:hover, .notes li button:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); box-shadow: none; }
+.threads .title, .notes .title { font-weight: 800; overflow-wrap: anywhere; }
+.meta { font-size: 12px; color: var(--muted); }
+.threads .excerpt, .notes .excerpt { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.threads .empty { color: var(--muted); font-style: italic; padding: 8px 0; }
+#moreThreads { margin-top: 8px; }
+.votes { display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 6px 0; }
+.post .votes { flex-direction: row; justify-content: flex-start; margin-top: 8px; }
+.vote {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; font-size: 13px;
+  background: transparent; color: var(--ink); border: 2px solid var(--line);
+}
+.vote .n { font-variant-numeric: tabular-nums; min-width: 1ch; }
+.vote[aria-pressed="true"] { border-color: var(--taxi); background: rgb(255 205 56 / 0.22); }
+
+.thread-scroll { flex: 1; overflow-y: auto; min-height: 120px; margin-bottom: 8px; }
+.post { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.post h3 { margin: 0 0 4px; font-size: 17px; font-weight: 900; overflow-wrap: anywhere; }
+.post p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.post .name { font-weight: 800; font-size: 13px; }
+.op-tag { font-size: 11px; background: var(--pink); color: #fff; border-radius: 6px; padding: 0 5px; margin-left: 6px; }
+.notes { max-height: 60vh; overflow-y: auto; }
+.notes li.unread button { background: rgb(255 205 56 / 0.16); }
+.notes .empty { color: var(--muted); font-style: italic; }
+
+/* The subway map: coloured line bullets, like the real thing. */
+.subway-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.subway-stop {
+  width: 100%; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px;
+  background: transparent; color: var(--ink); border: 2px solid var(--line); border-radius: 16px; padding: 8px 12px; text-align: left;
+}
+.subway-stop:hover { border-color: var(--taxi); box-shadow: none; }
+.subway-stop:disabled { opacity: 0.55; cursor: default; }
+.subway-stop .line { width: 30px; height: 30px; border-radius: 50%; color: #fff; display: grid; place-items: center; font-size: 15px; }
+.subway-stop .stop { font-weight: 900; }
+.subway-stop .meta { font-size: 12px; color: var(--muted); }
+
+/* Toasts float over everything (inside a dialog when one is open). */
+.toasts { position: fixed; left: 50%; top: 76px; transform: translateX(-50%); display: grid; gap: 6px; z-index: 10; }
+.toast { padding: 9px 16px; border-radius: 999px; font-size: 14px; max-width: calc(100vw - 32px); }
+
+/* ---- list view: the chat on its own, no world ---- */
 body.list-view .stage { display: none; }
-body.list-view .side { width: 100%; max-width: 720px; margin: 0 auto; border-left: 0; }
+body.list-view .side { left: 50%; right: auto; transform: translateX(-50%); width: min(720px, calc(100% - 24px)); }
+body.list-view .chat-open { display: none; }
 
+/* ---- chat hidden ---- */
+body.chat-hidden .side { display: none; }
+
+/* ---- phones: the chat is a sheet along the bottom ---- */
 @media (max-width: 760px) {
-  .layout { flex-direction: column; }
-  .stage { flex: none; height: 44vh; }
-  .log { min-height: 60px; }
-  .emotes button { font-size: 17px; padding: 4px 8px; }
-  .side { width: 100%; border-left: 0; border-top: 1px solid var(--line); flex: 1; padding: 8px 16px 16px; gap: 8px; }
-  .side .panel:first-child h2 { display: none; }
-  .side .panel:first-child { padding: 6px; }
-  .nav { display: flex; overflow-x: auto; }
-  .nav button { white-space: nowrap; gap: 8px; }
+  .hud { top: 8px; left: 8px; right: 8px; gap: 6px; flex-wrap: wrap; }
+  .brand { display: none; }
+  .station { padding: 10px 12px 7px 8px; }
+  .station-name { font-size: 16px; }
+  .bullet { width: 26px; height: 26px; font-size: 14px; }
+  .sign-chip { padding: 6px 10px; font-size: 13px; }
+  #viewToggle { display: none; }
   .hint { display: none; }
-  .where { display: none; }
+  .side { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; height: 44dvh; }
+  .emotes { left: 50%; bottom: calc(44dvh + 18px); }
+  body.chat-hidden .emotes { bottom: 14px; }
+  .emotes button { font-size: 17px; padding: 4px 8px; }
+  .log { min-height: 40px; }
+  body.list-view .side { top: 60px; height: auto; }
 }

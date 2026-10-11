@@ -2,21 +2,32 @@ package world
 
 import "container/heap"
 
+// Step costs for the pathfinder: a diagonal step is about 1.4 straight ones.
+const (
+	straightCost = 10
+	diagonalCost = 14
+)
+
 // FindPath returns the tiles to walk from `from` to `to`, excluding `from`.
-// Movement is 4-directional. Door tiles can only be the final step, so an
-// avatar never leaves a room by walking across a door on the way somewhere
-// else. It returns nil if `to` is unreachable or equal to `from`.
+// Movement is 8-directional, but a diagonal step never cuts a corner: both
+// tiles beside it must be passable too, so nobody squeezes between props.
+// Props block their tiles. Door and seat tiles can only be the final step,
+// so an avatar never leaves a room or sits down on the way somewhere else.
+// It returns nil if `to` is unreachable or equal to `from`.
 func FindPath(r *Room, from, to Point) []Point {
-	if from == to || !r.Floor(to) {
+	if from == to || !r.Floor(to) || r.Blocked(to) {
 		return nil
 	}
 	passable := func(p Point) bool {
-		return r.Floor(p) && (p == to || r.DoorAt(p) == nil)
+		if !r.Floor(p) || r.Blocked(p) {
+			return false
+		}
+		return p == to || (r.DoorAt(p) == nil && r.SeatAt(p) == nil)
 	}
 
 	cameFrom := map[Point]Point{}
 	cost := map[Point]int{from: 0}
-	open := &pq{{p: from, f: manhattan(from, to)}}
+	open := &pq{{p: from, f: octile(from, to)}}
 
 	for open.Len() > 0 {
 		cur := heap.Pop(open).(node).p
@@ -30,24 +41,38 @@ func FindPath(r *Room, from, to Point) []Point {
 			}
 			return path
 		}
-		for _, d := range [4]Point{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
+		for _, d := range [8]Point{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}} {
 			next := Point{cur.X + d.X, cur.Y + d.Y}
 			if !passable(next) {
 				continue
 			}
-			c := cost[cur] + 1
+			step := straightCost
+			if d.X != 0 && d.Y != 0 {
+				if !passable(Point{cur.X + d.X, cur.Y}) || !passable(Point{cur.X, cur.Y + d.Y}) {
+					continue
+				}
+				step = diagonalCost
+			}
+			c := cost[cur] + step
 			if old, seen := cost[next]; seen && c >= old {
 				continue
 			}
 			cost[next] = c
 			cameFrom[next] = cur
-			heap.Push(open, node{p: next, f: c + manhattan(next, to)})
+			heap.Push(open, node{p: next, f: c + octile(next, to)})
 		}
 	}
 	return nil
 }
 
-func manhattan(a, b Point) int { return abs(a.X-b.X) + abs(a.Y-b.Y) }
+// Diagonal reports whether stepping from a to b is a diagonal step.
+func Diagonal(a, b Point) bool { return a.X != b.X && a.Y != b.Y }
+
+// octile is the cheapest possible cost from a to b with 8-way movement.
+func octile(a, b Point) int {
+	dx, dy := abs(a.X-b.X), abs(a.Y-b.Y)
+	return straightCost*max(dx, dy) + (diagonalCost-straightCost)*min(dx, dy)
+}
 
 func abs(n int) int {
 	if n < 0 {

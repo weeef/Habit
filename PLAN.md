@@ -2,8 +2,8 @@
 
 > **Pitch:** A social platform where every community is a *place* you can walk into.
 > Fast, low-friction posting like an imageboard; ranked, threaded discussion like a
-> forum; live voice/text presence like a chat server, all wrapped in a pixel-art
-> virtual world where your avatar, your room and your reputation are the game.
+> forum; live voice/text presence like a chat server, all wrapped in a
+> cute, cosy virtual world (§2.4) where your avatar, your room and your reputation are the game.
 > Joining a community should feel like wandering into a room, not
 > signing up for a server.
 
@@ -25,7 +25,7 @@ easier than joining a Discord server.
 - *"Chat rooms you can actually walk into."*
 - *"No servers to join. Just rooms to visit."*
 
-**One-liner:** Habit is a pixel-art world where every chatroom is a real room.
+**One-liner:** Habit is a cute, cosy virtual world where every chatroom is a real room.
 You can see who's inside before you go in, hang out without having to talk, and
 join the conversation when you feel like it.
 
@@ -39,7 +39,7 @@ join the conversation when you feel like it.
    like a corporate Slack.
 
 **Why it's marketable**
-- **It's visual and clippable.** A busy pixel room full of avatars and speech
+- **It's visual and clippable.** A busy room full of avatars and speech
   bubbles makes a great 10-second TikTok, Reel or Short. Chat screenshots
   don't. Every room is an ad for itself.
 - **The share link drops you straight in.** `habit.gg/r/retro-lounge` opens
@@ -366,6 +366,182 @@ seeds the room with the right people.
 - The main world stays free and fully featured. The Penthouse is a bonus,
   not a paywall over the core.
 
+### 2.4 Art direction: cute voxels
+
+Habit is **cute and built from little cubes**: pastel, soft and friendly, so
+walking into a room full of strangers feels welcoming rather than
+intimidating (the core bet), with the depth and charm of voxel art.
+
+- **Characters are chibi voxel models**: a big cube head with eyes (and a
+  white highlight), blush and a tiny mouth, hair, a small body with arms,
+  and little legs. Each has an **accessory** (cat ears, a bow, a hair curl,
+  or none), a skin tone from the full human range, hair in natural or
+  pastel colours, and a candy-pastel outfit.
+- **They turn.** Characters smoothly turn to face where they're walking;
+  people standing nearby turn to look at whoever's talking; dancing is a
+  happy spin. Legs and arms swing as they walk, an arm goes up to wave,
+  they blink, their eyes close happily while emoting, and their head bobs
+  gently as they stand.
+- **Floors are blocks**: pastel tops with a slight per-block colour shift and
+  two-tone edges, decorated with tiny voxel **flowers** (Plaza), **stars**
+  (Gaming) or **leaves** (Gym).
+- **Doors are voxel arches** set into the back walls, with a glowing portal
+  in the colour of the room they lead to and a little star bobbing on top.
+- **Every room has a noticeboard**: a voxel corkboard on the back wall with
+  a paper note for each post (up to six). Hovering shows the latest posts;
+  clicking walks you up to it and opens the room's board to read, post and
+  reply.
+- **The Plaza is a little New York you can play with**: a big square under
+  a skyline of glass towers, Art Deco spires, brick walk-ups with fire
+  escapes and rooftop water towers, brownstones and neon signs, with yellow
+  taxis and a bus on the street out front. A wishing fountain (toss a coin
+  and the plaza counts the wishes), benches you sit on, cherry trees in
+  planters that rain petals when shaken, food carts (grab a hot dog,
+  pretzel, halal or coffee and carry it around), hydrants that spray,
+  newspaper boxes with silly headlines, steaming manholes, a subway
+  entrance that takes you to any room, a hello bell that makes everyone
+  turn and hop, a sidewalk clock, and pigeons that scatter when you walk by.
+- **Day and night.** Outdoors has a shared 24-minute day (one real minute
+  per plaza hour): bright days, warm sunrises and sunsets, soft-blue nights
+  with stars, when the lamps and the windows of the buildings light up one
+  by one. Night stays readable; labels and speech bubbles are never dimmed.
+  Indoor rooms (Gaming, Gym) keep their own lighting. Every interaction is small, shared and social
+  (everyone sees it), never a score to grind.
+- **You design your character at signup**: skin tone, hair colour, outfit
+  colour and an accessory, with a live rotating preview, starting from the
+  look you had as a guest. A fuller editor (more parts, outfits from the
+  shop, community-made items per §2.5) comes later.
+- **Little moments of delight**: sparkles drift up from the floor, a ❤️
+  emote sends hearts floating up, speech bubbles pop in, newcomers twinkle.
+- **Palettes**: the Plaza is pink-cream (plum at night, following
+  light/dark mode), Gaming is a starry lavender night, the Gym is mint with
+  a peach accent.
+- **Interface** matches: the rounded **Nunito** font (bundled with the app
+  under the SIL Open Font License, so no font requests go to Google), pill
+  buttons with a pink-to-lilac gradient, chunky rounded panels, a faint
+  polka-dot background, and bouncy hover effects.
+- **Keep it readable and calm**: labels only on you and whoever you hover;
+  newcomers get a small twinkle, not a label.
+- **Stay original.** Keep characters and branding distinct from Minecraft,
+  Crossy Road, Habbo and similar (no copied characters, logos or UI).
+- **How it's drawn.** The prototype has a tiny voxel renderer in Canvas 2D
+  (`web/static/app.js`): models are lists of coloured cubes with hidden
+  faces removed, rotated to any angle, projected isometrically, sorted back
+  to front and lit from the left (`characterModel`, `drawModel`,
+  `drawFloor`, `drawDoor`, `drawBoardObject`). Body parts (head, arms,
+  legs) are separate so they can move. If rooms get busy enough to need it,
+  move to WebGL (e.g. three.js with instanced cubes) keeping **the same
+  voxel models and part slots**, so community-made items (§2.5) are just
+  more voxel models on the same templates.
+
+### 2.5 Community-made cosmetics and sprites (creator content)
+
+Communities can **make their own cosmetics and decor** (hats, hair, shirts,
+furni, wall and floor themes, emblems) and use them in their community.
+This makes communities feel like *theirs*, and it's the start of the creator
+economy (§8). It's also the riskiest content Habit will host, so it ships
+**after** the safety tools (§3.6, task 3) and is designed so the platform
+company keeps its legal protections.
+
+**What protects the company, and what it must do in return.** No company can
+be completely free of liability for what users upload. The law protects
+platforms that **act like responsible hosts**, and the design below exists to
+keep Habit inside those protections.
+
+| Risk | Legal position | What Habit must do |
+|---|---|---|
+| Most user content (US) | **Section 230**: not treated as the publisher | Nothing special, but it does **not** cover the rows below |
+| Copyright (e.g. a Pokémon hat) | **DMCA §512 safe harbor** if we qualify | Registered DMCA agent with the US Copyright Office; takedown form + counter-notice; **repeat-infringer policy** (3 strikes → upload ban); act fast on notices; **don't profit directly from items we know infringe** |
+| Trademarks (brand logos, team crests) | **No statutory safe harbor** | Ban third-party logos and brand characters in the rules; take down on notice; block known marks in review |
+| Child sexual abuse material | **No protection; federal crime; reporting mandatory** (18 U.S.C. §2258A) | Hash-scan every upload; report to the NCMEC CyberTipline; preserve evidence as required; zero tolerance + permanent ban |
+| EU users | **Digital Services Act** hosting rules | Notice-and-action, **statement of reasons** for every removal, appeals, transparency reports |
+| UK users | **Online Safety Act** | Illegal-content and **children's** risk assessments covering uploads (Habit is 13+) |
+
+**Who can upload (phased)**
+1. **Launch:** adult (18+) community owners and mods only, with accounts at
+   least 30 days old and in good standing. Teens can *use* community items
+   but not upload.
+2. **Later:** an approved-creator programme (application, a portfolio, a
+   clean record).
+3. Uploading is a privilege that's removed for any confirmed violation.
+
+**Format rules (they shrink the risk before review starts)**
+- **Small voxel models only, not images.** Items are voxel models that
+  snap into Habit's part slots (§2.4): e.g. a hat up to 10×10×6 voxels,
+  furni up to 16×16×16, a palette of ≤ 32 colours. Creators build them in
+  an in-browser editor, or import a MagicaVoxel `.vox` file. **This is the
+  biggest safety win of the voxel style:** a few hundred coloured cubes
+  can't carry a photo, so realistic sexual imagery and CSAM, the worst
+  risks of image uploads, are close to impossible by construction. (Hash
+  scanning stays anyway for any flat image a feature ever accepts, like
+  thumbnails.)
+- The server **parses and rebuilds** every model into Habit's own simple
+  format (a list of voxels and a palette), rejecting anything outside the
+  limits, so nothing from the original file is ever served, and stores it
+  by content hash.
+- Served from a **separate cookieless domain** (e.g. `habitusercontent.com`)
+  with a strict Content Security Policy, so a malicious file can't attack
+  users' sessions.
+
+**The pipeline: every upload, every time**
+1. **Automated checks:** format and size limits; a match against
+   everything previously removed, including near-copies (so re-uploads are
+   blocked); rendered previews from several angles run through an
+   image classifier for nudity, hate symbols and slurs spelled out in
+   voxels, and through logo detection. **CSAM hash matching** (Cloudflare
+   CSAM Scanning Tool, PhotoDNA, Thorn Safer) is required for any feature
+   that accepts flat images.
+2. **Human review before anyone sees it.** The community's mods approve
+   items for their own community. **Habit staff** review anything that will
+   be shown platform-wide, featured, or (later) sold.
+3. **Published** with the creator's handle (staff always know the account).
+4. **Report button on every item**; reports go to the mod queue with
+   priority for CSAM, IP and minors' safety.
+5. **Takedown**, removing the item everywhere it's equipped or placed, with
+   a statement of reasons to the uploader and an appeal path.
+6. **Audit log** of every upload, decision, report and takedown, so we can
+   show regulators and courts that the process works.
+
+**Terms that put responsibility on the uploader** (lawyer-drafted):
+- **Creator Agreement:** the uploader promises the item is their own work
+  (or they have the rights), and grants Habit a non-exclusive worldwide
+  licence to host, display, resize and, only if they opt in, sell it.
+- **Indemnity:** the uploader is responsible for claims caused by what they
+  upload.
+- Habit can remove anything at any time, for any reason, and doesn't
+  guarantee items stay available.
+- **Banned:** third-party characters, logos and brands (including fan art
+  at launch); real people's likenesses; sexual content; hate symbols;
+  anything targeting minors.
+
+**Money comes last.** No buying or selling of community-made items at
+launch: profiting from an infringing item weakens the DMCA safe harbor.
+When the creator revenue share switches on (§8, item 6):
+- only staff-reviewed items can be sold
+- creators are paid through Stripe Connect (identity checks, tax forms such
+  as 1099-K and DAC7)
+- payouts are held for ~30 days so takedown claims can be clawed back
+
+**The company side**
+- Run Habit through a company (LLC or corporation) so founders aren't
+  personally liable.
+- Get **media/IP liability and cyber insurance** before uploads go live.
+- Register the DMCA agent and publish the copyright policy *before* the
+  first upload.
+- Have a lawyer review the Creator Agreement, Terms of Service, Content
+  Policy and the §2.4 character design.
+
+**Launch checklist for creator uploads**
+- [ ] Safety tools live: report, mod queue, takedown, audit log (§3.6 task 3)
+- [ ] CSAM hash scanning + NCMEC reporting flow tested end to end
+- [ ] DMCA agent registered; copyright policy, takedown and counter-notice forms live
+- [ ] Creator Agreement, Content Policy and ToS updated and lawyer-reviewed
+- [ ] Format limits + re-encoding + separate content domain in place
+- [ ] Review queue staffed (community mods + Habit staff), with response-time targets
+- [ ] DSA statements of reasons + appeals; UK OSA risk assessments updated
+- [ ] Company entity and insurance in place
+- [ ] Pilot with 2–3 trusted communities before opening to all adult owners
+
 ---
 
 ## 3. The MVP: "Walk in. Say hi." (weeks 0–12)
@@ -457,8 +633,10 @@ shippable in ~12 weeks.)*
 ## 3A. After the MVP: feature roadmap
 
 ### Phase 2: "the noticeboard" (months 3–6): the forum/imageboard layer
-- Boards get **threads**: the Hub noticeboard opens a thread view; Bump mode
-  (imageboard) and Ranked mode (Reddit) per Board.
+- ~~Boards get **threads**~~: done early. Every room has a text postboard
+  with saved threads, replies and reply notifications (see the MVP brief).
+  Still to come: Ranked mode (Reddit-style voting) alongside bump order,
+  search, and public read-only board pages.
 - **Image uploads**, launching *together with* the mandatory safety pipeline:
   CSAM hash matching (PhotoDNA / NCMEC hash lists or a vendor like Thorn
   Safer), NSFW classifier, thumbnailing and CDN.
@@ -498,8 +676,8 @@ shippable in ~12 weeks.)*
 - Events: scheduled AMAs, game nights, "Bump Wars" (time-boxed thread contests).
 - Seasonal events and a cosmetic-only battle pass.
 - Board vs. Board leaderboards (creative contests, not raids).
-- Creator tools: Board mods can design custom furni for their community
-  (with review).
+- Creator tools: communities make their own cosmetics, furni and themes,
+  following the upload pipeline and legal checklist in §2.5.
 
 ---
 
@@ -836,6 +1014,10 @@ are under 18.
   policy, regional loot box rules (Belgium/Netherlands), consumer law.
 - Payments through Stripe / app stores; app store rules for UGC apps
   (report/block tools, filtering, published contact info).
+- **Community-made cosmetics and sprites**: DMCA agent, repeat-infringer
+  policy, Creator Agreement with indemnity, CSAM hash scanning, and the full
+  checklist in §2.5. **Art style**: keep characters and branding original
+  (§2.4).
 
 ---
 
