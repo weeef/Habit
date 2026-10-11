@@ -15,4 +15,5 @@ age-checked 18+ "After Dark" area allows anything legal.
 
 - **MVP:** walk-in chat world. See [PLAN.md §3](./PLAN.md#3-the-mvp-walk-in-say-hi-weeks-012)
 - **Positioning & marketing:** see [PLAN.md §0](./PLAN.md#0-positioning--marketing)
+- **The Penthouse (premium tier + marketplace):** see [PLAN.md §2.3](./PLAN.md#23-the-penthouse-high-tier-membership--verified-marketplace)
 - **Full product & technical plan:** [PLAN.md](./PLAN.md)

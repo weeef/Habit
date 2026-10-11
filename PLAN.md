@@ -127,6 +127,9 @@ which you spend making your avatar and your room your own.
     after a delay, so it can't be spammed), event participation and quests.
   - **Gems** (premium): bought with money. Cosmetics only, **never** ranking,
     visibility or moderation power.
+- **The Penthouse**: an optional high-price membership tier (~$1,000/year)
+  that gives access to a members-only floor of the world and a verified
+  marketplace (see §2.3).
 - **Reputation / XP**: per-Board and global levels. They unlock cosmetics and
   small privileges (posting images in strict boards, creating rooms), never
   vote weight.
@@ -274,6 +277,95 @@ down, and it would put kids at real risk. The two-layer setup keeps both
 promises: *anything* can be discussed everywhere, and *anything legal*
 goes in After Dark.
 
+### 2.3 The Penthouse: high-tier membership & verified marketplace
+
+**Idea:** like a Bloomberg Terminal, the price is part of the product. A
+steep annual fee (around **$999/year**, with a monthly option around
+$99/month) buys access to a space where **everyone else has paid the same**.
+That filters out trolls, spam and bots, and makes the people inside worth
+meeting.
+
+**What members get**
+- **The Penthouse floor**: the top floor of a tower in the Plaza. Its
+  elevator door shows a live member count, but only members can ride it up.
+  Inside are lounges, private meeting rooms and members-only Boards.
+- **A high-signal network**: every member is a paying, age- and
+  identity-verified adult (verified *by a provider*, not shown to others), so
+  rooms are quieter, smarter and almost spam-free. Interest-based lounges
+  (investing, collectibles, founders, creators) can grow out of it.
+- **The Exchange**: a members-only marketplace for buying and selling real
+  goods and services (below).
+- **Perks**: Habit+ included, an exclusive Penthouse furni line, early
+  access to features, and members-only events (AMAs, live auctions in the
+  world).
+
+**Anonymity in the Penthouse: "verified, not exposed"**
+- Joining requires an **identity + age check** through a third-party provider
+  (e.g. Stripe Identity, Persona or Veriff). This is the price of
+  trust: members know everyone inside is a real, verified adult who has paid.
+- Habit itself stores only the result (**verified: yes**, date, provider
+  reference). Names, ID documents and selfies stay with the provider.
+- In lounges, members can still chat as "Anonymous #id" or under their
+  username. In **the Exchange**, sellers and buyers use a **stable trading
+  handle** with public ratings, because trade needs a reputation that
+  sticks.
+- Members are **18+ only**. Teen accounts can't see the elevator.
+
+**The Exchange: how buying and selling works**
+1. **Seller onboarding**: sellers complete payout onboarding through a
+   marketplace payments provider (e.g. **Stripe Connect**), which does the
+   legally required identity checks, collects tax info and pays them out.
+   Habit never holds anyone's money itself, which keeps us from becoming a
+   money transmitter.
+2. **Address verification** (needed for shipping and fraud prevention):
+   - Shipping addresses are checked with an address-validation API (e.g.
+     Smarty, Loqate, or the postal service's own) plus the card's address
+     check at payment (AVS).
+   - Sellers' addresses come from their payments-provider identity check.
+   - Addresses are stored **encrypted, in a separate store** with strict
+     staff access, and **shown to the other party only for an active order**.
+     Buyers can use parcel lockers or PO boxes for extra privacy.
+   - **Platform shipping labels** (via e.g. Shippo or EasyPost) give tracking
+     on every order. With some carriers, the seller can ship without ever
+     seeing the buyer's full address.
+3. **Escrow-style payment**: the buyer pays at checkout. Funds are **held
+   by the payments provider** until tracking shows delivery plus a short
+   inspection window (e.g. 3 days), then released to the seller.
+4. **Disputes**: "not as described" or "not received" claims go to Habit
+   staff with chat logs and tracking. Refunds come out of held funds. Repeat
+   bad actors lose Exchange access (and their membership, without refund,
+   for fraud).
+5. **Ratings**: both sides rate each trade. Ratings are attached to the
+   trading handle.
+6. **Fees**: a **5% fee** per sale (lower than eBay's or StockX's, a perk
+   of membership), on top of payment processing.
+
+**What can't be sold** (also required by payment providers): weapons and
+parts, drugs and paraphernalia, alcohol and tobacco, prescription medicine,
+counterfeits, stolen goods, adult content and services, personal data,
+accounts, financial products and securities, gift cards and currency, live
+animals, recalled or hazardous items, and **Habit Gems, Pips or items for
+real money** (no real-money trading of the game economy). Listings are
+checked by automated filters plus review for new sellers and high-value
+items.
+
+**Why not launch it early:** an expensive room is only valuable if it
+already has interesting people in it. An empty Penthouse is worse than none.
+So it arrives in **Phase 4**, once Habit has a large, active user base, and
+starts with a **founding cohort**: invite-only, capped at ~250 members, and
+priced as a "founding" rate locked in for life. That creates scarcity and
+seeds the room with the right people.
+
+**Guardrails so it doesn't wreck the rest of Habit**
+- The Penthouse buys **access to a space and a marketplace**, never power:
+  no ranking boost, no extra vote weight, no moderation power, no immunity
+  from rules elsewhere.
+- Members' Penthouse status is **hidden outside the Penthouse unless they
+  choose** to show a badge, so the main world doesn't split into rich vs.
+  poor.
+- The main world stays free and fully featured. The Penthouse is a bonus,
+  not a paywall over the core.
+
 ---
 
 ## 3. The MVP: "Walk in. Say hi." (weeks 0–12)
@@ -392,7 +484,12 @@ shippable in ~12 weeks.)*
 ### Phase 4: "the game deepens" (months 9–12+)
 - Mini-games inside rooms: trivia, drawing/guessing, simple racing, wired-style
   furni logic (triggers → actions, like Habbo "Wired").
-- Trading marketplace for tradeable furni (escrow, anti-scam and anti-RMT rules).
+- Trading marketplace for tradeable furni (in-game items for Pips/Gems only;
+  escrow, anti-scam and anti-RMT rules).
+- **The Penthouse (§2.3)**: founding cohort (~250 invite-only members),
+  identity + age verification, the Penthouse floor, then **the Exchange**
+  (Stripe Connect payouts, address validation, shipping labels, held funds,
+  disputes, ratings) for the founding cohort first, then all members.
 - Events: scheduled AMAs, game nights, "Bump Wars" (time-boxed thread contests).
 - Seasonal events and a cosmetic-only battle pass.
 - Board vs. Board leaderboards (creative contests, not raids).
@@ -510,6 +607,17 @@ rooms(id, owner_id NULL, board_id NULL, channel_id NULL, kind[plaza|hub|chat|voi
 doors(id, room_id, x, y, target_room_id, target_x, target_y, lock[open|knock|role|password])
 room_items(room_id, inventory_id, x, y, z, rotation)
 ledger(id, user_id, currency, delta, reason, ref_id, created_at)  -- append-only
+memberships(user_id, tier[penthouse], status, started_at, renews_at, provider_sub_ref)
+verifications(user_id, kind[identity_age|seller_kyc], result, provider, provider_ref,
+              verified_at)                -- result only; documents stay with provider
+trading_handles(user_id, handle, rating_avg, rating_count)
+listings(id, seller_id, title, body, price_cents, currency, category, status, images)
+orders(id, listing_id, buyer_id, seller_id, amount_cents, fee_cents, status
+       [paid|shipped|delivered|released|disputed|refunded], provider_payment_ref,
+       label_ref, tracking_no, release_at)
+addresses(id, user_id, ciphertext, validated_at)  -- separate encrypted store
+disputes(id, order_id, opened_by, reason, status, resolution)
+trade_ratings(order_id, rater_id, ratee_id, stars, comment)
 channels(id, board_id, kind[text|voice], name, perms_json)
 messages(id, channel_id, author_id, is_anon, anon_hash, body, created_at)
 ```
@@ -570,6 +678,12 @@ anonymous to other users, and we keep as little about you as we can.
 - **Payments later (Phase 3)**: buying Gems goes through a payment provider,
   which handles card details and receipts. We store only a payment
   reference against the account, never shown to anyone.
+- **The one exception: the Penthouse (§2.3).** Members choose to verify
+  identity and age, and Exchange users share shipping addresses. That data
+  lives mainly with the verification and payments providers. What we do hold
+  (encrypted addresses, verification results) sits in a separate, locked-down
+  store. The privacy policy must say this clearly: *free Habit holds almost
+  nothing about you; the Penthouse holds more, because trade requires it.*
 
 ---
 
@@ -704,6 +818,22 @@ are under 18.
   birth year plus the §6.1 protections is enough for launch markets, and
   that the data-minimisation and retention policy fits law-enforcement
   request obligations.
+- **The Penthouse & Exchange**:
+  - **Marketplace seller laws**: the US **INFORM Consumers Act** (verify
+    high-volume sellers and, above set thresholds, show buyers their name
+    and contact details), EU **DAC7** (report seller income to tax
+    authorities), and similar UK rules. Stripe Connect handles much of the
+    verification and reporting.
+  - **Sales tax / VAT**: many US states treat marketplaces as "marketplace
+    facilitators" that must collect sales tax. EU/UK VAT rules work the same
+    way for some sales. Use a tax engine (e.g. Stripe Tax, TaxJar).
+  - **Consumer protection**: refund/returns policy, clear listing rules, and
+    EU platform-to-business transparency for sellers.
+  - **AML / payments**: never hold user funds ourselves; let the payments
+    provider hold and release them. Keep the prohibited-items list in line
+    with the provider's rules.
+  - **High-value subscription**: clear renewal terms, cancellation and
+    refund policy (auto-renewal laws in many US states and the EU).
 - Virtual currency: no cash-out, so it isn't money transmission. Refund
   policy, regional loot box rules (Belgium/Netherlands), consumer law.
 - Payments through Stripe / app stores; app store rules for UGC apps
@@ -717,13 +847,17 @@ are under 18.
    slots, bigger uploads, profile flair. No ranking advantages.
 3. **Board Boosts**: communities pool Gems to unlock Hub themes, extra
    channels and custom emotes (like Discord server boosts).
-4. **Creator revenue share** (later): mods/artists design furni and get a
+4. **The Penthouse** (Phase 4): ~$999/year (or ~$99/month), founding cohort
+   first. Even 1,000 members is ~$1M/year in revenue, with almost no extra
+   infrastructure cost.
+5. **Exchange fees**: 5% of each sale in the Penthouse marketplace.
+6. **Creator revenue share** (later): mods/artists design furni and get a
    cut of sales.
-5. **No** pay-for-visibility on posts, and **no ads**: advertisers avoid
+7. **No** pay-for-visibility on posts, and **no ads**: advertisers avoid
    anonymous, open-speech platforms (4chan's own history shows this), so the
    business shouldn't depend on them. Cosmetics and subscriptions don't
    care what people talk about.
-6. Pick payment providers that accept open-speech UGC platforms, and keep
+8. Pick payment providers that accept open-speech UGC platforms, and keep
    After Dark free of pornographic content, so payments aren't at risk.
 
 ---
@@ -740,6 +874,9 @@ are under 18.
 - **Economy**: Pips inflation (earned vs. sunk), Gem conversion rate,
   ARPPU.
 - **Community**: number of Boards with ≥1 active mod and ≥20 weekly posters.
+- **Penthouse**: members, renewal rate (the real test of whether the network
+  is worth it), weekly active members, Exchange sales volume, dispute rate,
+  fraud losses.
 
 ---
 
@@ -789,6 +926,10 @@ discounted for small platforms; apply early.
 | Users lose access (no email reset) | Recovery code nudged after first message and again later; optional passkey/2FA later; clear warning at signup |
 | Economy exploits / duping | Append-only ledger, server-authoritative everything, rate caps, anomaly alerts |
 | Scope creep (it's 4 products in one) | The MVP is walk-in chat only (§3.4 lists what's out); forum next, then voice/economy, mini-games last |
+| The Penthouse feels empty or not worth $1k | Launch late (Phase 4) with a hand-picked, capped founding cohort; members-only events; track renewal rate and adjust price/perks before scaling |
+| Exchange fraud, scams or prohibited goods | Seller KYC via payments provider, held funds released only after delivery, tracked shipping labels, ratings, dispute process, prohibited-items list with automated + manual listing checks |
+| Leak of verification or address data | Keep documents with providers; encrypt addresses in a separate store; strict, audited staff access; show addresses only during active orders |
+| Penthouse splits the community into rich vs. poor | Buys access, never power; status hidden outside the Penthouse by default; main world stays free and complete |
 | Realtime scaling costs | Room caps and instancing; low tick rate; voice only on demand |
 
 ---
