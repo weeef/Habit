@@ -18,6 +18,27 @@ age-checked 18+ "After Dark" area allows anything legal.
 - **The Penthouse (premium tier + marketplace):** see [PLAN.md §2.3](./PLAN.md#23-the-penthouse-high-tier-membership--verified-marketplace)
 - **Full product & technical plan:** [PLAN.md](./PLAN.md)
 
+## Keep a local copy that updates itself
+
+One-time setup:
+1. Install **Git** (https://git-scm.com/downloads) and **Go**
+   (https://go.dev/dl/).
+2. Open a terminal (on Windows, "Git Bash" or "Command Prompt") in the folder
+   where you want Habit, and run:
+   ```sh
+   git clone -b claude/hybrid-platform-concept-plan-l0im18 https://github.com/weeef/Snoo4.git habit
+   ```
+   This creates a `habit` folder linked to the GitHub repo.
+
+From then on, double-click the start script in that folder:
+- **Windows:** `start-windows.bat`
+- **Mac:** `start-mac-linux.command` (the first time, right-click → Open)
+- **Linux:** run `./start-mac-linux.command`
+
+Each time it pulls the latest version from GitHub, then starts Habit and opens
+http://localhost:8080. To update the folder without starting Habit, run
+`git pull` inside it.
+
 ## Run the prototype
 
 You need Go 1.24 or newer.
@@ -31,8 +52,8 @@ go test ./...
 Open the page in two browser windows to see two people in the same world.
 
 **What works now (website, week 0–2 prototype):**
-- The Plaza plus two chatrooms (`#general`, `#lounge`) joined by doors. Click
-  the floor to walk; walk into a door to enter that room.
+- The Plaza with doors to two communities, **Gaming** and **Gym**, each with
+  its own look. Click the floor to walk; walk into a door to enter.
 - Hover a door to peek: live head-count and the last few messages.
 - Room navigator with live counts; click to teleport.
 - Look around as a guest with no account. Typing opens a one-step signup

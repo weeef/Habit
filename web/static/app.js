@@ -23,6 +23,16 @@ const TW = 64, TH = 32;           // tile size in world pixels
 const BUBBLE_MS = 7000, EMOTE_MS = 2500;
 const EMOJI = { wave: "👋", dance: "💃", laugh: "😂", heart: "❤️", sit: "🪑" };
 
+// Each community gets its own look. Missing colours fall back to the page
+// theme, so the Plaza follows light/dark mode.
+const THEMES = {
+  plaza: { accent: "#6b4de6" },
+  gaming: { void: "#14112a", floorA: "#2b2350", floorB: "#241d45", edge: "#7c4dff", accent: "#7c4dff" },
+  gym: { floorA: "#5b6770", floorB: "#525d66", edge: "#3d464d", accent: "#e4572e" },
+};
+function theme(name) { return THEMES[name] || THEMES.plaza; }
+function themeColor(key, cssVar) { return theme(state.room?.theme)[key] || css(cssVar); }
+
 const state = {
   ws: null,
   room: null,          // { id, name, kind, rows, doors }
@@ -357,7 +367,7 @@ function diamond(sx, sy, z) {
 
 function draw(now) {
   const { w, h } = layout();
-  ctx.fillStyle = css("--void");
+  ctx.fillStyle = themeColor("void", "--void");
   ctx.fillRect(0, 0, w, h);
   if (!state.room) { requestAnimationFrame(draw); return; }
   const z = state.view.z;
@@ -369,9 +379,9 @@ function draw(now) {
       if (!isFloor(x, y)) continue;
       const { sx, sy } = toScreen(x, y);
       diamond(sx, sy, z);
-      ctx.fillStyle = (x + y) % 2 ? css("--floor-a") : css("--floor-b");
+      ctx.fillStyle = (x + y) % 2 ? themeColor("floorA", "--floor-a") : themeColor("floorB", "--floor-b");
       ctx.fill();
-      ctx.strokeStyle = css("--floor-edge");
+      ctx.strokeStyle = themeColor("edge", "--floor-edge");
       ctx.lineWidth = 1;
       ctx.stroke();
     }
@@ -402,7 +412,8 @@ function draw(now) {
 function drawDoor(d, z) {
   const { sx, sy } = toScreen(d.pos[0], d.pos[1]);
   const w = 26 * z, h = 46 * z;
-  ctx.fillStyle = "#6b4de6";
+  const accent = theme(d.target).accent;
+  ctx.fillStyle = accent;
   ctx.fillRect(sx - w / 2, sy - h, w, h);
   ctx.fillStyle = "#2a2438";
   ctx.fillRect(sx - w / 2 + 4 * z, sy - h + 5 * z, w - 8 * z, h - 5 * z);
@@ -412,7 +423,7 @@ function drawDoor(d, z) {
   ctx.fill();
 
   const n = state.counts[d.target] ?? 0;
-  label(`${d.label} · ${n}`, sx, sy - h - 10 * z, z, "#6b4de6", "#fff");
+  label(`${d.label} · ${n}`, sx, sy - h - 10 * z, z, accent, "#fff");
 }
 
 function label(text, x, y, z, bg, fg) {

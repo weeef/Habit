@@ -98,14 +98,14 @@ func TestPersonalInfoFilter(t *testing.T) {
 
 func TestAnonTag(t *testing.T) {
 	secret := []byte("s")
-	a := anonTag(secret, "u1", "general", testNow)
-	if a != anonTag(secret, "u1", "general", testNow.Add(time.Hour)) {
+	a := anonTag(secret, "u1", "gaming", testNow)
+	if a != anonTag(secret, "u1", "gaming", testNow.Add(time.Hour)) {
 		t.Error("tag should be stable within a room for the day")
 	}
-	if a == anonTag(secret, "u1", "lounge", testNow) {
+	if a == anonTag(secret, "u1", "gym", testNow) {
 		t.Error("tag should change across rooms")
 	}
-	if a == anonTag(secret, "u1", "general", testNow.Add(24*time.Hour)) {
+	if a == anonTag(secret, "u1", "gaming", testNow.Add(24*time.Hour)) {
 		t.Error("tag should change across days")
 	}
 }

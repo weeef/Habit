@@ -183,6 +183,7 @@ type roomView struct {
 	ID    string     `json:"id"`
 	Name  string     `json:"name"`
 	Kind  world.Kind `json:"kind"`
+	Theme string     `json:"theme"`
 	Rows  []string   `json:"rows"`
 	Doors []doorView `json:"doors"`
 }
@@ -482,7 +483,7 @@ func (sv *Server) enterLocked(s *session, r *room, at world.Point) {
 	sv.enqueue(s, map[string]any{
 		"t": "room",
 		"room": roomView{
-			ID: r.def.ID, Name: r.def.Name, Kind: r.def.Kind, Rows: r.def.Rows, Doors: doors,
+			ID: r.def.ID, Name: r.def.Name, Kind: r.def.Kind, Theme: r.def.Theme, Rows: r.def.Rows, Doors: doors,
 		},
 		"you":     s.pubID,
 		"avatars": avatars,

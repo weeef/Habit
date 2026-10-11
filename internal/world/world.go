@@ -25,8 +25,9 @@ func (p *Point) UnmarshalJSON(b []byte) error {
 type Kind string
 
 const (
-	KindPlaza Kind = "plaza"
-	KindChat  Kind = "chat"
+	KindPlaza     Kind = "plaza"
+	KindCommunity Kind = "community" // a community's own space, like Gaming or Gym
+	KindChat      Kind = "chat"
 )
 
 // Door is a tile that moves an avatar into another room when stepped on.
@@ -45,6 +46,7 @@ type Room struct {
 	ID       string
 	Name     string
 	Kind     Kind
+	Theme    string // look of the room; the client picks colours from it
 	Rows     []string
 	Spawn    Point
 	Doors    []Door

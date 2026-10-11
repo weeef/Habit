@@ -115,36 +115,36 @@ func TestWalkThroughDoor(t *testing.T) {
 	a := dial(t, url)
 	watcher := dial(t, url)
 
-	// The Plaza's door to #general is at (0, 3).
+	// The Plaza's door to Gaming is at (0, 3).
 	a.send(map[string]any{"t": "walk", "x": 0, "y": 3})
 	room := a.expect("room")["room"].(map[string]any)
-	if room["id"] != "general" {
-		t.Fatalf("want to arrive in general, got %v", room["id"])
+	if room["id"] != "gaming" {
+		t.Fatalf("want to arrive in gaming, got %v", room["id"])
 	}
 	watcher.expect("leave")
 
 	// Counts update for everyone, so doors show who's inside.
 	for {
 		counts := watcher.expect("counts")["counts"].(map[string]any)
-		if counts["general"] == float64(1) && counts["plaza"] == float64(1) {
+		if counts["gaming"] == float64(1) && counts["plaza"] == float64(1) {
 			break
 		}
 	}
 
 	// Peeking at a room you aren't in shows its recent chat.
-	watcher.send(map[string]any{"t": "peek", "room": "general"})
+	watcher.send(map[string]any{"t": "peek", "room": "gaming"})
 	peek := watcher.expect("peek")
 	if peek["count"] != float64(1) {
-		t.Fatalf("peek should count 1 person in general, got %v", peek["count"])
+		t.Fatalf("peek should count 1 person in gaming, got %v", peek["count"])
 	}
 }
 
 func TestTeleport(t *testing.T) {
 	url := startServer(t)
 	a := dial(t, url)
-	a.send(map[string]any{"t": "teleport", "room": "lounge"})
-	if id := a.expect("room")["room"].(map[string]any)["id"]; id != "lounge" {
-		t.Fatalf("want lounge, got %v", id)
+	a.send(map[string]any{"t": "teleport", "room": "gym"})
+	if id := a.expect("room")["room"].(map[string]any)["id"]; id != "gym" {
+		t.Fatalf("want gym, got %v", id)
 	}
 }
 
