@@ -44,6 +44,9 @@ join the conversation when you feel like it.
 - **The share link drops you straight in.** `habit.gg/r/retro-lounge` opens
   the room in the browser, and you can look around **as a guest** without
   signing up. Sign-up is only asked for when you try to talk (§3).
+- **Nothing personal to hand over.** No email, no phone number, no real
+  name. Just pick a username and password. That's a selling point in its own
+  right: *"No email. No phone. Just a name."*
 - **The message is simple.** "Discord is a building full of locked doors;
   Habit is a street where you can see into every window."
 - **Built-in FOMO, but kind.** Live head-counts, "friends are here" and
@@ -56,8 +59,11 @@ join the conversation when you feel like it.
 2. **Seed communities**: invite 5–10 small communities (subreddits, Discord
    servers, streamers' regulars) to get their own Hub at launch, with
    founder badges for their members.
-3. **Waitlist with a hook**: sign up and reserve your username, get a
-   "Founding Visitor" item that will never be sold again.
+3. **Reserve your name early**: there's no email waitlist (we don't collect
+   emails). Instead, pre-launch visitors **claim their username** by creating
+   their account early (username + password) and get a "Founding Visitor"
+   item that will never be sold again. Launch announcements go out through
+   our social accounts and the seed communities.
 4. **Creator partnerships**: small streamers hold "come hang in my room"
    nights. The share link means viewers are in the room within seconds.
 5. **Nostalgia communities**: Habbo/Club Penguin/old-web forums, posted
@@ -86,6 +92,8 @@ which you spend making your avatar and your room your own.
 
 ## 2. Core concepts (the nouns)
 
+- **Account**: **username + password only.** No email or phone number is ever
+  asked for (see §5.5). Other users only ever see your username and avatar.
 - **User / Avatar**: one account with two posting modes:
   - **Named**: avatar visible, your reputation counts.
   - **Anon-in-context**: shows as "Anonymous" with a per-thread ID hash (like
@@ -224,15 +232,19 @@ is built for it.
    messages.
 3. **Walk into a room.** You see avatars, speech bubbles and the chat log.
    Guests can read, walk, sit and wave. Nobody is notified that you arrived.
-4. **Want to talk?** Click the chat box → a **one-step signup** (pick a name +
-   continue with Google/Discord/Apple or email magic link; confirm age band).
-   You stay in the same room. No reload and no lost place.
+4. **Want to talk?** Click the chat box → a **one-step signup**: pick a
+   **username + password**, tick "I'm 18 or older" (see §7), and solve a quick
+   invisible bot check. **No email, no phone number.** You stay in the same
+   room. No reload and no lost place.
 5. **Say hi.** Your message appears as a bubble and in the log. Your first
    visit badge tells regulars you're new. **Quick-start prompts** are offered
    ("👋 Hi!", "What's everyone up to?") so the first message takes one tap.
-6. **Make it yours (lightly).** Pick from ~10 preset avatar looks and colours.
+6. **Keep your account safe.** After your first message (not before, so it
+   never slows down saying hi), a friendly nudge asks you to save your
+   **recovery code**, since there's no email to reset a password with.
+7. **Make it yours (lightly).** Pick from ~10 preset avatar looks and colours.
    Favourite the room so it's one click away next time.
-7. **Come back.** The navigator shows your favourites with live counts.
+8. **Come back.** The navigator shows your favourites with live counts.
    "3 people in #general now."
 
 ### 3.3 In scope for the MVP
@@ -243,7 +255,7 @@ is built for it.
 | Chat | Text chat as speech bubbles + side log, recent history on entering, emoji, @mentions within the room, quick-start prompts |
 | Approachability | Guest mode (look but don't talk), door previews and live counts, quiet entry and exit, "first visit" badge, newcomers' corner in each Hub |
 | Navigation | Room navigator: search, favourites, live counts, teleport-to-door; shareable room links |
-| Accounts | One-step signup (OAuth or magic link), username, age band, preset avatar picker |
+| Accounts | Username + password only (no email/phone), recovery code, 18+ self-declaration, privacy-friendly bot check, preset avatar picker, change password, delete account |
 | Accessibility | List view (plain channel list and chat, no rendering); works on mobile browsers |
 | Safety | Report, block and mute; room mods can kick, timeout and ban; word filter + toxicity scoring on chat; rate limits; new-account slow mode; staff admin panel; audit log |
 | Platform | Web only (desktop + mobile browser). Analytics for the funnel in §3.5 |
@@ -269,7 +281,7 @@ shippable in ~12 weeks.)*
 ### 3.6 MVP timeline
 | Weeks | Milestone |
 |---|---|
-| 0–2 | Decisions (age policy, art style), repo, CI, staging. **Prototype: Plaza + 2 rooms joined by a door, 2 avatars walking and chatting over WebSocket.** Playtest the feel with 10 people. |
+| 0–2 | Decisions (backend language, art style), repo, CI, staging. **Prototype: Plaza + 2 rooms joined by a door, 2 avatars walking and chatting over WebSocket.** Playtest the feel with 10 people. |
 | 3–6 | Real gateway (rooms, doors, presence, chat persistence), guest mode, one-step signup, navigator, avatar presets, first art pass |
 | 7–9 | Safety tools (report, block, mute, mod kick/ban, filter, admin panel), list view, mobile-browser polish, analytics funnel |
 | 10–11 | Closed alpha with 2–3 seed communities; fix whatever slows the time to first message |
@@ -399,7 +411,10 @@ docs/
 
 ### 5.3 Data model sketch (core tables)
 ```
-users(id, email, created_at, age_band, status, trust_score)
+users(id, username, password_hash, recovery_code_hash, created_at, age_confirmed_at,
+      status, trust_score)          -- no email, no phone
+sessions(id, user_id, created_at, last_seen_at, ip_hash, ua_hash)
+banned_signals(kind[ip_hash|device_hash], value, expires_at)
 avatars(user_id, layers_json, display_name)
 boards(id, slug, title, mode[bump|ranked], anon_policy, nsfw, created_by)
 board_roles(board_id, user_id, role[owner|mod|janitor])
@@ -432,6 +447,49 @@ duplication exploits, the main way virtual economies get broken.
   server-side. Mods never see the real account (only admins/T&S do, and it's
   audited).
 
+### 5.5 Accounts: username + password only
+**Principle:** we never ask for an email address or phone number. You're
+anonymous to other users, and we keep as little about you as we can.
+
+- **Signup**: username (unique, filtered for slurs and impersonation of
+  staff) + password. Minimum 10 characters, no annoying composition rules,
+  checked against known-breached password lists (local list or
+  k-anonymity lookup). Hashed with **argon2id**.
+- **Recovery without email**: at signup we generate a **recovery code**
+  (e.g. 4 groups of words). We store only its hash. Showing it is delayed
+  until after the first message, then nudged again later ("save this or you
+  could lose your account"). Using it lets you set a new password and issues
+  a new code.
+- **Optional extra security** (Phase 3, never required): passkeys and
+  authenticator-app 2FA. Both work without email.
+- **Lost both password and recovery code?** The account can't be recovered.
+  This is the honest trade-off of no email, and the UI says so plainly.
+  Staff never "recover" accounts on request, because that's how accounts get
+  stolen.
+- **Bot and spam defence without email or phone** (this matters, because free
+  accounts are free for spammers too):
+  - privacy-friendly bot check at signup (Cloudflare Turnstile, or a
+    self-hosted proof-of-work challenge such as ALTCHA)
+  - signup rate limits per IP / network
+  - new-account slow mode and link and mention limits until an account has
+    some history
+  - trust earned over time and through good behaviour, not through
+    verification
+- **Ban enforcement**: bans apply to the account plus short-lived **hashed**
+  IP/device signals, so a banned user can't instantly come back. Mods can
+  also put a room into "established accounts only" mode during a raid.
+- **Data minimisation**: no email, phone or real name stored. IP addresses
+  are kept only as salted hashes with short retention (e.g. 30 days) for
+  abuse prevention. Chat logs follow a published retention policy. Account
+  deletion actually deletes.
+- **Be honest in the privacy policy**: "anonymous" means *other users* can't
+  identify you and *we* collect almost nothing. It doesn't mean
+  untraceable. We still have to respond to valid legal requests with
+  whatever little we hold. Don't promise more than that.
+- **Payments later (Phase 3)**: buying Gems goes through a payment provider,
+  which handles card details and receipts. We store only a payment
+  reference against the account, never shown to anyone.
+
 ---
 
 ## 6. Moderation & Trust and Safety (non-negotiable, built from day one)
@@ -449,12 +507,16 @@ what decides whether the product survives.
    - *Platform*: a paid T&S team (or vendor) for escalations, appeals and
      legal requests.
 2. **Friction where it matters**
-   - New accounts: posting rate limits, no images for the first X hours or
-     until verified, CAPTCHA on anon posts.
-   - Trust score built from account age, verified email/phone, mod actions
-     and report accuracy.
-3. **Minor safety (if under-18s are allowed)**
-   - Age banding at signup plus age assurance for 18+ areas.
+   - New accounts: chat and posting rate limits, no links or images for the
+     first X hours, bot check at signup and on anon posts.
+   - Trust score built from account age, time active, messages that are not
+     reported, mod actions and report accuracy. **Not** from email or phone,
+     which we don't collect.
+3. **Minor safety**: with no email or phone, we can't verify age, so the
+   MVP is **18+ by self-declaration** and has **no adult content at all**.
+   That way, a minor who lies about their age still lands in a clean
+   space. If under-18s are ever allowed, it needs:
+   - Age banding at signup plus age assurance for any 18+ areas.
    - NSFW Boards hidden and blocked for minor accounts.
    - DMs and private rooms limited for minors; adults can't DM minor accounts
      they aren't friends with.
@@ -474,7 +536,11 @@ what decides whether the product survives.
 - **EU**: GDPR (data export/delete, lawful basis), **Digital Services Act**
   (notice-and-action, statements of reasons, transparency).
 - **UK**: Online Safety Act (illegal content and children's risk assessments,
-  age assurance for adult content).
+  age assurance for adult content). Anonymous accounts don't exempt us; keep
+  adult content out of the product to avoid strict age-check duties.
+- **No-email accounts**: confirm with a lawyer that self-declared 18+ plus
+  no adult content is enough for launch markets, and that the data-minimisation
+  and retention policy fits law-enforcement request obligations.
 - Virtual currency: no cash-out, so it isn't money transmission. Refund
   policy, regional loot box rules (Belgium/Netherlands), consumer law.
 - Payments through Stripe / app stores; app store rules for UGC apps
@@ -527,8 +593,8 @@ discounted for small platforms; apply early.
 ---
 
 ## 11. Launch strategy
-1. **Pre-launch (from week 0)**: waitlist + username reservation +
-   "Founding Visitor" item; post dev-log clips of the world to short-form video.
+1. **Pre-launch (from week 0)**: username claiming (early account creation,
+   no email) + "Founding Visitor" item; post dev-log clips of the world to short-form video.
 2. **Closed alpha (weeks 10–11)**: 2–3 small communities with existing
    culture (retro games, pixel art, a streamer's regulars). Recruit their mods
    first, and watch new visitors' first 60 seconds closely.
@@ -550,6 +616,8 @@ discounted for small platforms; apply early.
 | Child safety incident | Age policy decided in MVP weeks 0–2, DM restrictions, safe defaults, age assurance |
 | Empty world ("ghost town") | Launch small and dense (few Hubs, not many); greeters at peak hours; show *recent* chat on doors so rooms feel alive even when quiet; scheduled events; later, threads on the noticeboard |
 | Walking feels slow or gimmicky | Navigator teleport and list view always available; playtest the time to first message weekly; cut anything that adds steps before saying hi |
+| Spam and ban evasion (accounts are free, no email or phone) | Bot check, IP/network signup limits, new-account slow mode, hashed IP/device bans, trust earned over time, "established accounts only" room mode |
+| Users lose access (no email reset) | Recovery code nudged after first message and again later; optional passkey/2FA later; clear warning at signup |
 | Economy exploits / duping | Append-only ledger, server-authoritative everything, rate caps, anomaly alerts |
 | Scope creep (it's 4 products in one) | The MVP is walk-in chat only (§3.4 lists what's out); forum next, then voice/economy, mini-games last |
 | Realtime scaling costs | Room caps and instancing; low tick rate; voice only on demand |
@@ -557,9 +625,9 @@ discounted for small platforms; apply early.
 ---
 
 ## 13. Immediate next steps (this repo)
-1. Decide: **age policy** (recommendation: 16+ or 18+ for the MVP, which
-   makes guest mode and open chat much simpler to run safely) and **backend
-   language** (Node vs. Go).
+1. Decide: **backend language** (Node vs. Go). Age policy is now set to
+   **18+ by self-declaration with no adult content** (§6), because without
+   email or phone we can't verify age. Confirm this with a lawyer.
 2. Scaffold the monorepo (`apps/web`, `apps/game`, `apps/gateway`,
    `packages/shared`) with docker-compose for Postgres and Redis.
 3. Build the week 0–2 prototype: **the Plaza plus two chatrooms joined by
@@ -567,7 +635,7 @@ discounted for small platforms; apply early.
    and chat with bubbles and a side log.
 4. Playtest it with 10 people who say Discord intimidates them; time their
    link → first message, and iterate.
-5. Put up a landing page + waitlist with username reservation, and start
-   posting dev-log clips.
+5. Put up a landing page where people can claim a username (no email), and
+   start posting dev-log clips.
 6. Draft the Content Policy now. Pick a CSAM-scanning vendor before Phase 2
    (image uploads).
