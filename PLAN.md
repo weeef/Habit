@@ -233,7 +233,7 @@ is built for it.
 3. **Walk into a room.** You see avatars, speech bubbles and the chat log.
    Guests can read, walk, sit and wave. Nobody is notified that you arrived.
 4. **Want to talk?** Click the chat box → a **one-step signup**: pick a
-   **username + password**, tick "I'm 18 or older" (see §7), and solve a quick
+   **username + password**, enter your **birth year** (13+, see §6), and solve a quick
    invisible bot check. **No email, no phone number.** You stay in the same
    room. No reload and no lost place.
 5. **Say hi.** Your message appears as a bubble and in the log. Your first
@@ -255,9 +255,10 @@ is built for it.
 | Chat | Text chat as speech bubbles + side log, recent history on entering, emoji, @mentions within the room, quick-start prompts |
 | Approachability | Guest mode (look but don't talk), door previews and live counts, quiet entry and exit, "first visit" badge, newcomers' corner in each Hub |
 | Navigation | Room navigator: search, favourites, live counts, teleport-to-door; shareable room links |
-| Accounts | Username + password only (no email/phone), recovery code, 18+ self-declaration, privacy-friendly bot check, preset avatar picker, change password, delete account |
+| Accounts | Username + password only (no email/phone), recovery code, birth year (13+, sets teen or adult protections), privacy-friendly bot check, preset avatar picker, change password, delete account |
 | Accessibility | List view (plain channel list and chat, no rendering); works on mobile browsers |
 | Safety | Report, block and mute; room mods can kick, timeout and ban; word filter + toxicity scoring on chat; rate limits; new-account slow mode; staff admin panel; audit log |
+| Teen safety | Teen protections on by default for 13–17 (§6.1): personal-info filter, grooming-risk detection, prioritised reports from teens, all-ages content rules everywhere |
 | Platform | Web only (desktop + mobile browser). Analytics for the funnel in §3.5 |
 
 ### 3.4 Explicitly NOT in the MVP
@@ -283,7 +284,7 @@ shippable in ~12 weeks.)*
 |---|---|
 | 0–2 | Decisions (backend language, art style), repo, CI, staging. **Prototype: Plaza + 2 rooms joined by a door, 2 avatars walking and chatting over WebSocket.** Playtest the feel with 10 people. |
 | 3–6 | Real gateway (rooms, doors, presence, chat persistence), guest mode, one-step signup, navigator, avatar presets, first art pass |
-| 7–9 | Safety tools (report, block, mute, mod kick/ban, filter, admin panel), list view, mobile-browser polish, analytics funnel |
+| 7–9 | Safety tools (report, block, mute, mod kick/ban, filter, admin panel), teen protections (personal-info filter, grooming-risk detection, prioritised teen reports), list view, mobile-browser polish, analytics funnel |
 | 10–11 | Closed alpha with 2–3 seed communities; fix whatever slows the time to first message |
 | 12 | Public beta launch with 5–10 seeded Hubs + the launch event (§11) |
 
@@ -411,8 +412,8 @@ docs/
 
 ### 5.3 Data model sketch (core tables)
 ```
-users(id, username, password_hash, recovery_code_hash, created_at, age_confirmed_at,
-      status, trust_score)          -- no email, no phone
+users(id, username, password_hash, recovery_code_hash, created_at,
+      age_band[teen_13_15|teen_16_17|adult], birth_year, status, trust_score)          -- no email, no phone
 sessions(id, user_id, created_at, last_seen_at, ip_hash, ua_hash)
 banned_signals(kind[ip_hash|device_hash], value, expires_at)
 avatars(user_id, layers_json, display_name)
@@ -512,35 +513,101 @@ what decides whether the product survives.
    - Trust score built from account age, time active, messages that are not
      reported, mod actions and report accuracy. **Not** from email or phone,
      which we don't collect.
-3. **Minor safety**: with no email or phone, we can't verify age, so the
-   MVP is **18+ by self-declaration** and has **no adult content at all**.
-   That way, a minor who lies about their age still lands in a clean
-   space. If under-18s are ever allowed, it needs:
-   - Age banding at signup plus age assurance for any 18+ areas.
-   - NSFW Boards hidden and blocked for minor accounts.
-   - DMs and private rooms limited for minors; adults can't DM minor accounts
-     they aren't friends with.
-   - Chat filter on stricter settings by default; a "safe Hub" mode.
+3. **Teen safety**: Habit is open to everyone **13 and up**. See §6.1.
 4. **Transparency**: public content policy, mod log per Board, appeals,
    transparency reports (required under the EU DSA at scale).
 5. **Anti-raid**: cross-Board brigade detection (vote/visit spikes from an
    outside referrer), Board "lockdown" mode, no organized "raid" features.
+
+### 6.1 Teens on Habit (13+)
+
+Habit is for everyone **13 and older**, like Habbo. Teens are welcome. Combined
+with no email or phone, that means **we can never be sure who is an adult and
+who is a teen**. So the rule is: **the whole platform is built to be safe for a
+13-year-old**, with extra protections layered on for accounts that say they
+are under 18.
+
+**Age gate**
+- Signup asks for **birth year** in a neutral way (no pre-filled default and no
+  "I'm over 18" checkbox to click through).
+- Under 13 → signup is refused, kindly, and the browser is blocked from retrying
+  straight away with a different year. This keeps us out of COPPA's
+  parental-consent rules, which can't be met without contact details anyway.
+- We store the **age band** (13–15, 16–17, adult) and birth year only, so bands
+  move up automatically. Age can be **raised** only by contacting support with
+  an explanation (rarely granted), but **lowered** any time, so someone who
+  realises they mis-entered as an adult can fix it instantly.
+
+**Rules for everyone (because anyone might be a teen)**
+- **All-ages content everywhere.** No adult Boards, no sexual content, no gore.
+  (Phase 2 image uploads are scanned and held to the same rule.)
+- **Everything happens in public rooms in the MVP**: no DMs, no private rooms.
+  Public rooms are the safest place to chat because others, mods and filters
+  can all see what's said.
+- Chat filters and toxicity scoring on for every room; room mods everywhere.
+
+**Extra protections for teen accounts (13–17), on by default**
+- **Personal-info filter**: blocks teens from posting phone numbers, addresses,
+  school names, emails and "add me on [other app]" handles, and warns them why.
+  This is the classic Habbo protection, and it matters most here.
+- **Grooming-risk detection**: classifiers watch for known patterns (asking for
+  age, location, photos or secrecy, pushing to move to another app) in messages
+  *sent to or near* teen accounts. Hits go to the top of the moderator queue,
+  and the sender gets throttled until reviewed.
+- **Reports from teens are prioritised**, with a one-tap "this person is making
+  me uncomfortable" option that also hides that person from them.
+- **Less visibility**: teen profiles show no birth year or age band to others,
+  aren't listed in "who's online" searches by name, and can't be followed or
+  teleported to by anyone who isn't their friend.
+- **Later phases**, when the features arrive:
+  - **DMs**: teens can only DM accepted friends. Adults can't send friend
+    requests to accounts aged 13–15. Adult↔teen DMs are scanned with the
+    grooming-risk models.
+  - **Personal rooms**: teens' rooms default to friends-only. Teens can't enter
+    adults' locked or password rooms.
+  - **Voice**: off by default for 13–15; proximity voice only in public rooms.
+  - **Trading and payments**: spending limits for teen accounts, and no trading
+    between adults and 13–15s.
+- **Age-band rooms (optional, later)**: Boards can create "13–17 only"
+  rooms (a "teen lounge"). Self-declared adults can't walk in, though, without
+  verification, a determined liar can. So these rooms get extra mod attention,
+  not less.
+
+**People and process**
+- Moderators on shift during teen peak hours (after school and evenings, by
+  launch time zones), with child-safety training.
+- A clear escalation path: grooming or exploitation reports go to trained
+  staff within minutes, with **NCMEC CyberTipline** reports (US) and law
+  enforcement referral when required.
+- A **children's risk assessment** before launch (UK OSA requires one), redone
+  when new features ship.
+- Optional age assurance later (privacy-preserving facial age estimation
+  or an ID check through a third party) for anyone who *wants* to unlock
+  adult-only features. It's never required to use Habit.
 
 ---
 
 ## 7. Legal & compliance checklist (talk to a lawyer before launch)
 - Terms of Service, Privacy Policy, Content Policy, Community Guidelines.
 - **US**: Section 230 protections, DMCA agent registration plus a takedown
-  flow, NCMEC CyberTipline reporting obligations, **COPPA** (no under-13s
-  without verifiable parental consent; easiest to just bar them).
+  flow, NCMEC CyberTipline reporting obligations, **COPPA** (under-13s are barred
+  at signup, see §6.1).
 - **EU**: GDPR (data export/delete, lawful basis), **Digital Services Act**
   (notice-and-action, statements of reasons, transparency).
-- **UK**: Online Safety Act (illegal content and children's risk assessments,
-  age assurance for adult content). Anonymous accounts don't exempt us; keep
-  adult content out of the product to avoid strict age-check duties.
-- **No-email accounts**: confirm with a lawyer that self-declared 18+ plus
-  no adult content is enough for launch markets, and that the data-minimisation
-  and retention policy fits law-enforcement request obligations.
+- **UK**: Online Safety Act (illegal content and **children's risk
+  assessment**; Habit is "likely to be accessed by children", so the
+  children's safety duties apply) and the ICO **Age Appropriate Design Code**
+  (high-privacy defaults for under-18s, which §6.1 is designed to meet).
+  Keeping adult content out avoids the strict age-check duties.
+- **EU**: DSA Article 28 (appropriate measures to protect minors; no
+  profiling-based ads to minors).
+- **US states**: several states have passed minors' social-media laws
+  (age verification / parental consent), many under legal challenge. Get
+  advice on which launch states to include.
+- **No-email accounts + teens**: confirm with a lawyer that self-declared
+  birth year plus the §6.1 protections is enough for launch markets, and
+  that the data-minimisation and retention policy fits law-enforcement
+  request obligations.
 - Virtual currency: no cash-out, so it isn't money transmission. Refund
   policy, regional loot box rules (Belgium/Netherlands), consumer law.
 - Payments through Stripe / app stores; app store rules for UGC apps
@@ -583,7 +650,8 @@ what decides whether the product survives.
 | Full-stack engineers | 2 |
 | Game/realtime engineer (PixiJS, WebSockets) | 1 |
 | Pixel artist / designer | 1 (contract OK) |
-| Trust & Safety lead / community manager | 1 (**hire before public launch**) |
+| Trust & Safety lead / community manager | 1, with child-safety experience (**hire before the closed alpha**, since teens are allowed) |
+| Part-time moderators | 2–4 to cover teen peak hours (can start as trained volunteers + paid lead) |
 | Founder/PM | 1 |
 
 Infra at MVP scale: roughly $300–$1.5k/month (DB, Redis, CDN, LiveKit,
@@ -613,7 +681,7 @@ discounted for small platforms; apply early.
 | Risk | Mitigation |
 |---|---|
 | Becomes a haven for illegal or extremist content | Hash scanning, account-backed anonymity, paid T&S, clear policy enforced from day 1 |
-| Child safety incident | Age policy decided in MVP weeks 0–2, DM restrictions, safe defaults, age assurance |
+| Child safety incident (teens + anonymity: the top risk) | Whole platform safe for 13-year-olds by default; public rooms only in the MVP; personal-info filter and grooming-risk detection; prioritised teen reports; trained mods on shift at teen peak hours; children's risk assessment before launch (§6.1) |
 | Empty world ("ghost town") | Launch small and dense (few Hubs, not many); greeters at peak hours; show *recent* chat on doors so rooms feel alive even when quiet; scheduled events; later, threads on the noticeboard |
 | Walking feels slow or gimmicky | Navigator teleport and list view always available; playtest the time to first message weekly; cut anything that adds steps before saying hi |
 | Spam and ban evasion (accounts are free, no email or phone) | Bot check, IP/network signup limits, new-account slow mode, hashed IP/device bans, trust earned over time, "established accounts only" room mode |
@@ -625,9 +693,9 @@ discounted for small platforms; apply early.
 ---
 
 ## 13. Immediate next steps (this repo)
-1. Decide: **backend language** (Node vs. Go). Age policy is now set to
-   **18+ by self-declaration with no adult content** (§6), because without
-   email or phone we can't verify age. Confirm this with a lawyer.
+1. Decide: **backend language** (Node vs. Go). Age policy is **13+ with
+   teen protections** (§6.1). Get a lawyer to review it and do the children's
+   risk assessment before the closed alpha.
 2. Scaffold the monorepo (`apps/web`, `apps/game`, `apps/gateway`,
    `packages/shared`) with docker-compose for Postgres and Redis.
 3. Build the week 0–2 prototype: **the Plaza plus two chatrooms joined by
