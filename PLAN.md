@@ -422,7 +422,7 @@ is built for it.
 | Accessibility | List view (plain channel list and chat, no rendering); works on mobile browsers |
 | Safety | Report, block and mute; room mods can kick, timeout and ban; word filter + toxicity scoring on chat; rate limits; new-account slow mode; staff admin panel; audit log |
 | Teen safety | Teen protections on by default for 13–17 (§6.1): personal-info filter, grooming-risk detection, prioritised reports from teens, all-ages content rules everywhere |
-| Platform | Web only (desktop + mobile browser). Analytics for the funnel in §3.5 |
+| Platform | **Website first**: web only (desktop + mobile browser), no app install needed. Analytics for the funnel in §3.5. The mobile app follows once the website is proven (Phase 3) |
 
 ### 3.4 Explicitly NOT in the MVP
 Threads/imageboard posting, image uploads, **After Dark (18+) and age
@@ -446,7 +446,7 @@ shippable in ~12 weeks.)*
 ### 3.6 MVP timeline
 | Weeks | Milestone |
 |---|---|
-| 0–2 | Decisions (backend language, art style), repo, CI, staging. **Prototype: Plaza + 2 rooms joined by a door, 2 avatars walking and chatting over WebSocket.** Playtest the feel with 10 people. |
+| 0–2 | Decisions (art style; backend is Go), repo, CI, staging. **Prototype: Plaza + 2 rooms joined by a door, 2 avatars walking and chatting over WebSocket.** Playtest the feel with 10 people. |
 | 3–6 | Real gateway (rooms, doors, presence, chat persistence), guest mode, one-step signup, navigator, avatar presets, first art pass |
 | 7–9 | Safety tools (report, block, mute, mod kick/ban, filter, admin panel), teen protections (personal-info filter, grooming-risk detection, prioritised teen reports), list view, mobile-browser polish, analytics funnel |
 | 10–11 | Closed alpha with 2–3 seed communities; fix whatever slows the time to first message |
@@ -480,6 +480,11 @@ shippable in ~12 weeks.)*
 - Channel roles and permissions (locked doors, knock-to-enter, mod-only back
   rooms), searchable chat history, notifications.
 - Monetization switches on: cosmetics (Gems) and Habit+ (§8).
+- **Mobile app (iOS + Android)**, once the website has proven the "walk in,
+  say hi" loop: wrap the web client with Capacitor first (one codebase,
+  fast to ship), add push notifications ("3 people in #general now") and
+  app-store safety requirements, then move hot paths native if needed.
+  After Dark stays hidden in app builds by default (§2.2).
 
 ### Phase 4: "the game deepens" (months 9–12+)
 - Mini-games inside rooms: trivia, drawing/guessing, simple racing, wired-style
@@ -493,7 +498,6 @@ shippable in ~12 weeks.)*
 - Events: scheduled AMAs, game nights, "Bump Wars" (time-boxed thread contests).
 - Seasonal events and a cosmetic-only battle pass.
 - Board vs. Board leaderboards (creative contests, not raids).
-- Mobile apps (React Native / Capacitor wrapper of the web client first).
 - Creator tools: Board mods can design custom furni for their community
   (with review).
 
@@ -530,31 +534,25 @@ shippable in ~12 weeks.)*
 |---|---|---|
 | Web client | **TypeScript + React (Next.js)** for forum/UI pages | SEO for threads, fast iteration |
 | Game client | **PixiJS** (WebGL 2D) inside the React app | Well suited to isometric pixel-art sprites; light; runs in browser |
-| Realtime | **WebSockets** via a dedicated gateway (Node + uWebSockets.js, or Elixir/Phoenix) | Presence, chat, avatar movement |
+| Realtime | **Go** WebSocket gateway (`coder/websocket`) | Presence, chat, avatar movement; Go handles many concurrent connections cheaply |
 | Voice | **LiveKit** (self-hosted or cloud) WebRTC SFU | Proximity voice and voice rooms without building an SFU |
-| API | **Node.js (Fastify) or Go**, REST + a typed client (tRPC/OpenAPI) | Team familiarity; typed contracts |
+| API | **Go** (`net/http`), REST + an OpenAPI spec for typed clients | One language across API and gateway; decided |
 | DB | **PostgreSQL** | Users, boards, posts, economy ledger (needs transactions) |
 | Cache / pubsub | **Redis** | Sessions, rate limits, presence, room state fan-out |
 | Search | **Meilisearch** or OpenSearch | Thread and Board search |
-| Media | Object storage (S3/R2) + CDN + image worker (sharp/libvips) | Uploads, thumbnails, sprite sheets |
-| Queue | Redis Streams / BullMQ, or NATS | Media scanning, notifications, Pips payouts |
+| Media | Object storage (S3/R2) + CDN + image worker (libvips) | Uploads, thumbnails, sprite sheets |
+| Queue | Redis Streams or NATS | Media scanning, notifications, Pips payouts |
 | Infra | Docker, a single region to start (Fly.io / Render / AWS ECS), Terraform later | Keep ops small early |
 | Observability | OpenTelemetry, Sentry, Grafana | |
 
-**Monorepo layout (proposed)**
+**Repo layout (current, grows as phases land)**
 ```
-apps/
-  web/          # Next.js: forum pages, account, settings, embeds the game client
-  game/         # PixiJS isometric client (package consumed by web)
-  api/          # HTTP API
-  gateway/      # WebSocket realtime server (rooms, presence, chat)
-  workers/      # media pipeline, moderation scans, economy jobs
-packages/
-  shared/       # types, validation schemas (zod), constants
-  ui/           # design-system components
-  sprites/      # avatar/furni asset pipeline + manifests
-infra/          # docker-compose, terraform, k8s (later)
-docs/
+cmd/habit/          # server binary: world gateway + web client
+internal/world/     # room layouts, doors, pathfinding (no runtime state)
+internal/server/    # realtime gateway: sessions, movement, chat, accounts, filters
+web/static/         # browser client (Canvas 2D for now; PixiJS when the art lands)
+# later: internal/store (Postgres), internal/mod (moderation), cmd/worker,
+#        infra/ (docker-compose, terraform), mobile/ (Capacitor shell)
 ```
 
 ### 5.2 Realtime room model
@@ -935,14 +933,16 @@ discounted for small platforms; apply early.
 ---
 
 ## 13. Immediate next steps (this repo)
-1. Decide: **backend language** (Node vs. Go). Age policy is **13+ with
+1. Backend language: **Go** (decided). Age policy is **13+ with
    teen protections** (§6.1). Get a lawyer to review it and do the children's
    risk assessment before the closed alpha.
-2. Scaffold the monorepo (`apps/web`, `apps/game`, `apps/gateway`,
-   `packages/shared`) with docker-compose for Postgres and Redis.
-3. Build the week 0–2 prototype: **the Plaza plus two chatrooms joined by
-   doors**. Avatars walk via WebSocket, step through a door into a chatroom,
-   and chat with bubbles and a side log.
+2. ~~Build the week 0–2 prototype~~ **Done** (Go, see README): the Plaza plus
+   two chatrooms joined by doors, server-authoritative walking over WebSocket,
+   chat bubbles + side log, door peeking and live counts, guest mode,
+   username + password signup, anonymous-by-default names, teen
+   personal-info filter, list view.
+3. Next for the website (weeks 3–6): Postgres for accounts and chat history,
+   recovery-code redemption, report/block/mute, mod tools, real pixel art.
 4. Playtest it with 10 people who say Discord intimidates them; time their
    link → first message, and iterate.
 5. Put up a landing page where people can claim a username (no email), and

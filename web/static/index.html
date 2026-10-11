@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Habit</title>
+  <meta name="description" content="Walk in. Say hi. Chatrooms you can actually walk into.">
+  <meta name="theme-color" content="#1d1b2e">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">habit</div>
+    <div class="where" id="where">Connecting…</div>
+    <div class="top-actions">
+      <button type="button" id="viewToggle" class="ghost" aria-pressed="false" title="Switch between the world and a plain chat list">List view</button>
+      <button type="button" id="accountBtn" class="ghost">Sign up</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="stage" id="stage" aria-label="Room view">
+      <canvas id="world"></canvas>
+      <div class="tooltip" id="tooltip" hidden></div>
+      <div class="hint" id="hint">Click the floor to walk. Walk into a door to visit a room.</div>
+      <div class="emotes" role="group" aria-label="Emotes">
+        <button type="button" data-emote="wave" title="Wave">👋</button>
+        <button type="button" data-emote="dance" title="Dance">💃</button>
+        <button type="button" data-emote="laugh" title="Laugh">😂</button>
+        <button type="button" data-emote="heart" title="Heart">❤️</button>
+        <button type="button" data-emote="sit" title="Sit">🪑</button>
+      </div>
+    </section>
+
+    <aside class="side">
+      <section class="panel">
+        <h2>Rooms</h2>
+        <ul class="nav" id="nav"></ul>
+      </section>
+
+      <section class="panel chat">
+        <h2 id="chatTitle">Chat</h2>
+        <ol class="log" id="log" aria-live="polite"></ol>
+        <div class="prompts" id="prompts">
+          <button type="button">👋 Hi!</button>
+          <button type="button">What's everyone up to?</button>
+          <button type="button">First time here!</button>
+        </div>
+        <form class="say" id="sayForm" autocomplete="off">
+          <input id="say" maxlength="280" placeholder="Say something…" aria-label="Message">
+          <button type="submit">Send</button>
+        </form>
+        <label class="named">
+          <input type="checkbox" id="named" disabled>
+          Show my username (you're anonymous by default)
+        </label>
+      </section>
+    </aside>
+  </main>
+
+  <dialog id="authDialog">
+    <form method="dialog" id="authForm" class="auth">
+      <h2 id="authTitle">Pick a name to chat</h2>
+      <p class="muted">No email. No phone. Just a username and password.</p>
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" data-mode="signup" aria-selected="true">New here</button>
+        <button type="button" role="tab" data-mode="login" aria-selected="false">I have an account</button>
+      </div>
+      <label>Username <input name="username" required minlength="3" maxlength="20" pattern="[A-Za-z0-9_]+" autocomplete="username"></label>
+      <label>Password <input name="password" type="password" required minlength="10" autocomplete="new-password"></label>
+      <label class="signup-only">Birth year <input name="birthYear" inputmode="numeric" pattern="[0-9]{4}" placeholder="YYYY" autocomplete="off"></label>
+      <p class="error" id="authError" role="alert"></p>
+      <div class="row">
+        <button type="button" class="ghost" id="authCancel">Just looking</button>
+        <button type="submit" id="authSubmit">Start chatting</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="recoveryDialog">
+    <div class="auth">
+      <h2>Save your recovery code</h2>
+      <p class="muted">There's no email to reset your password with, so this code is the only way back into your account if you forget it. Write it down somewhere safe.</p>
+      <p class="code" id="recoveryCode"></p>
+      <div class="row">
+        <button type="button" id="copyCode" class="ghost">Copy</button>
+        <button type="button" id="savedCode">I've saved it</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
