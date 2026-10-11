@@ -21,6 +21,7 @@ easier than joining a Discord server.
 
 **Tagline options**
 - *"Walk in. Say hi."* (recommended)
+- *"Anonymous. Walk in. Say anything."* (for the open-speech angle)
 - *"Chat rooms you can actually walk into."*
 - *"No servers to join. Just rooms to visit."*
 
@@ -69,8 +70,11 @@ join the conversation when you feel like it.
 5. **Nostalgia communities**: Habbo/Club Penguin/old-web forums, posted
    with care, not spam.
 
-**Brand voice:** warm, playful and a little retro. Never edgy-for-edgy's-sake.
-The imageboard influence shows up as fun and freedom, not as shock content.
+**Brand voice:** warm, playful, a little retro, and **unfiltered**. Habit
+is the place where you can be anonymous and say what you actually think.
+Marketing leads with the *freedom* and the *welcome* ("Anonymous. Walk in. Say
+anything."). It never leads with shock content: the 18+ After Dark area
+(§2.2) exists, but it isn't the shop window.
 
 ---
 
@@ -78,7 +82,7 @@ The imageboard influence shows up as fun and freedom, not as shock content.
 
 | Source | What we keep | What we deliberately avoid |
 |---|---|---|
-| **Imageboards (4chan)** | Optional anonymity, image-first threads, threads that expire ("bump" economy), low barrier to posting, board culture and in-jokes | Zero moderation, no accountability, illegal content, raids/harassment |
+| **Imageboards (4chan)** | **Anonymous by default**, talk about genuinely anything legal, image-first threads, threads that expire ("bump" economy), low barrier to posting, board culture and in-jokes | Zero moderation, no accountability, illegal content, raids/harassment |
 | **Reddit** | Communities ("Boards") owned by their own moderators, voting and ranking, threaded comments, wiki/rules per community | Karma farming, repost bots, one global front page that flattens every community into the same feed |
 | **Discord** | Real-time chat channels, voice rooms, roles and permissions, presence ("who's here right now") | Siloed servers you can't discover; history that's impossible to search |
 | **Habbo** | Isometric pixel-art rooms, customizable avatars, furniture ("furni") and room building, trading, room events and mini-games | Pay-to-win, predatory loot boxes, unmoderated private messages with minors |
@@ -93,14 +97,17 @@ which you spend making your avatar and your room your own.
 ## 2. Core concepts (the nouns)
 
 - **Account**: **username + password only.** No email or phone number is ever
-  asked for (see §5.5). Other users only ever see your username and avatar.
-- **User / Avatar**: one account with two posting modes:
-  - **Named**: avatar visible, your reputation counts.
-  - **Anon-in-context**: shows as "Anonymous" with a per-thread ID hash (like
-    imageboard poster IDs). The account still exists server-side for moderation
-    and bans. *Public* anonymity, not *system* anonymity.
+  asked for (see §5.5). Your username is only shown when *you* choose.
+- **User / Avatar**: one account with two identity modes, switchable at any
+  time (see §2.2):
+  - **Anonymous (default)**: shows as "Anonymous" with a short ID that is
+    stable within one room or thread (like imageboard poster IDs) and changes
+    across them. The account still exists server-side for moderation and bans.
+    *Public* anonymity, not *system* anonymity.
+  - **Named**: your username is shown and your reputation counts.
 - **Board**: a community (e.g. `/retro/`, `/cooking/`). Has rules, mods, flair,
-  settings (anon allowed? NSFW? image-only?), and a Hub room.
+  settings (anon-only, named-only or either; all-ages or After Dark 18+;
+  image-only?), and a Hub room.
 - **Hub**: the Board's isometric room. Live avatars, chat bubbles, furni and
   "thread objects" you can click to open.
 - **Thread**: an OP (text and/or image) plus replies. Two display modes per Board:
@@ -204,6 +211,69 @@ make walking in feel less like a commitment and more like a visit?*
   room as a plain Discord-style channel list and chat. Same rooms, no rendering,
   for screen readers, slow phones, or people who just want to chat.
 
+### 2.2 Anonymity & open speech: the 4chan part
+
+Habit should feel like 4chan in the ways that matter: **nobody knows who you
+are, and you can talk about genuinely anything.** It also has to stay open to
+teens (§6.1) and stay legal, so it's built in two layers.
+
+**Anonymous by default, everywhere**
+- When you speak in a room or post in a thread, you appear as
+  **"Anonymous #3f9a"**. The ID stays the same within that room (resetting
+  daily) or that thread, so conversations stay followable, but it changes
+  across rooms and threads, so nobody can track you around the platform.
+- In fully anonymous rooms your avatar wears a **random outfit for the
+  visit**, so your look can't give you away either.
+- Showing your username is **opt-in**, per room or per message. Boards can
+  set rooms to anon-only (imageboard style), named-only (a regular
+  hangout) or either.
+- No email or phone (§5.5), no public post history on anonymous messages,
+  and no "who is this anon" tool for anyone but audited staff.
+- Moderators see "Anonymous #3f9a" too. Their "ban this poster" button
+  resolves to the account server-side, so mods can enforce rules without
+  ever learning who someone is.
+
+**Two layers of speech**
+
+| | **Main world** (13+) | **After Dark** (18+, age-assured) |
+|---|---|---|
+| Who can enter | Everyone 13+ | Adults who have passed a privacy-preserving age check; teens can never enter |
+| Topics | **Any topic is open for discussion**: politics, religion, drugs, sex education, mental health, crime, conspiracy theories, controversial and unpopular opinions. Nothing is off-limits *as a subject*. | Same, plus **anything legal for adults**: explicit sexual talk, graphic descriptions, offensive and dark humour, unfiltered language |
+| What's not allowed (beyond the hard lines) | Explicit sexual content, graphic gore, content that *encourages* self-harm or eating disorders (discussing them and seeking support is fine) | Only the hard lines below |
+| Filters | Profanity filter optional per room; teen protections always on | Off by default |
+| Images (Phase 2) | All-ages images only, scanned | No pornographic images (text only), because of legal and payment-processor exposure; other adult images scanned |
+
+**Hard lines everywhere, even in After Dark** (4chan has these too: its
+global rules ban illegal content):
+- Anything illegal where we operate. In particular, **any sexual content
+  involving minors** is removed and reported to NCMEC.
+- Credible threats, incitement to violence, terrorist propaganda.
+- **Doxxing**: posting someone's private information.
+- Targeted harassment campaigns and organised raids on people or communities.
+- Non-consensual intimate imagery; spam, scams and malware.
+
+The aim is **"moderate behaviour, not opinions."** Mods remove what crosses a
+hard line or breaks a room's own rules. Nobody gets removed for holding an
+unpopular view.
+
+**After Dark age check, without breaking anonymity**
+- A third-party age-assurance provider runs a one-off check, usually a selfie
+  age estimate or an ID check. The provider doesn't share your identity with
+  us and deletes the data. We get back only "**adult: yes**" plus a date.
+- Habit stores just that flag on the account. No name, no ID scan, no
+  photo. It's optional, and the main world never needs it.
+- After Dark is reached through clearly marked doors in the world (a
+  "basement" or "back alley"), hidden entirely from teen accounts and from
+  mobile app builds by default (app-store rules), and switchable on via the web.
+
+**Why not just one 4chan-style space for everyone?** Because Habit welcomes
+13-year-olds, explicit and unfiltered adult content must be behind a real age
+check. A self-declared birth year isn't enough. Without that, the UK Online
+Safety Act and app-store and payment-processor rules would shut the product
+down, and it would put kids at real risk. The two-layer setup keeps both
+promises: *anything* can be discussed everywhere, and *anything legal*
+goes in After Dark.
+
 ---
 
 ## 3. The MVP: "Walk in. Say hi." (weeks 0–12)
@@ -253,6 +323,7 @@ is built for it.
 | World | The Plaza + 5–10 seeded Board Hubs, each with 2–4 chatrooms behind doors; one hand-made layout per room type |
 | Movement | Click-to-walk, sit on furniture, 5 emotes (wave, dance, sit, laugh, heart) |
 | Chat | Text chat as speech bubbles + side log, recent history on entering, emoji, @mentions within the room, quick-start prompts |
+| Anonymity | Anonymous by default in every room ("Anonymous #id", per-room IDs resetting daily); opt-in to show your username; Board rooms set to anon-only / named-only / either; mod tools that work on anon IDs |
 | Approachability | Guest mode (look but don't talk), door previews and live counts, quiet entry and exit, "first visit" badge, newcomers' corner in each Hub |
 | Navigation | Room navigator: search, favourites, live counts, teleport-to-door; shareable room links |
 | Accounts | Username + password only (no email/phone), recovery code, birth year (13+, sets teen or adult protections), privacy-friendly bot check, preset avatar picker, change password, delete account |
@@ -262,7 +333,8 @@ is built for it.
 | Platform | Web only (desktop + mobile browser). Analytics for the funnel in §3.5 |
 
 ### 3.4 Explicitly NOT in the MVP
-Threads/imageboard posting, image uploads, anonymous posting, voting, voice,
+Threads/imageboard posting, image uploads, **After Dark (18+) and age
+assurance**, voting, voice,
 DMs, friends list, personal rooms, room building, furni inventory, currencies,
 quests, mini-games, trading, user-created Boards, native mobile apps.
 *(Each is planned below. Saying no to them now is what makes the MVP
@@ -298,7 +370,9 @@ shippable in ~12 weeks.)*
 - **Image uploads**, launching *together with* the mandatory safety pipeline:
   CSAM hash matching (PhotoDNA / NCMEC hash lists or a vendor like Thorn
   Safer), NSFW classifier, thumbnailing and CDN.
-- Named/anon toggle per post with per-thread poster IDs; voting; mod queue.
+- Anonymous-by-default posts with per-thread poster IDs; voting; mod queue.
+- **After Dark (18+)**: age-assurance provider integration, basement/back-alley
+  doors, After Dark Boards and rooms (§2.2).
 - Thread objects in the Hub (noticeboard showing the top 5 threads, etc.).
 - User-created Boards (by application at first).
 
@@ -413,11 +487,13 @@ docs/
 ### 5.3 Data model sketch (core tables)
 ```
 users(id, username, password_hash, recovery_code_hash, created_at,
-      age_band[teen_13_15|teen_16_17|adult], birth_year, status, trust_score)          -- no email, no phone
+      age_band[teen_13_15|teen_16_17|adult], birth_year, adult_verified_at NULL,
+      status, trust_score)          -- no email, no phone
 sessions(id, user_id, created_at, last_seen_at, ip_hash, ua_hash)
 banned_signals(kind[ip_hash|device_hash], value, expires_at)
 avatars(user_id, layers_json, display_name)
-boards(id, slug, title, mode[bump|ranked], anon_policy, nsfw, created_by)
+boards(id, slug, title, mode[bump|ranked], anon_policy[anon_only|named_only|either],
+       tier[main|after_dark], created_by)
 board_roles(board_id, user_id, role[owner|mod|janitor])
 threads(id, board_id, author_id, is_anon, anon_hash, title, body, media_id,
         bumped_at, score, locked, archived_at)
@@ -435,7 +511,7 @@ doors(id, room_id, x, y, target_room_id, target_x, target_y, lock[open|knock|rol
 room_items(room_id, inventory_id, x, y, z, rotation)
 ledger(id, user_id, currency, delta, reason, ref_id, created_at)  -- append-only
 channels(id, board_id, kind[text|voice], name, perms_json)
-messages(id, channel_id, author_id, body, created_at)
+messages(id, channel_id, author_id, is_anon, anon_hash, body, created_at)
 ```
 **Economy rule:** balances are derived from the append-only `ledger` (with
 cached totals). Every grant or spend is one DB transaction. This prevents
@@ -444,6 +520,10 @@ duplication exploits, the main way virtual economies get broken.
 ### 5.4 Anonymity implementation
 - `anon_hash = HMAC(server_secret_rotated, user_id || thread_id)[:8]`: stable
   within a thread, unlinkable across threads to everyone except the server.
+  For chatrooms: `HMAC(secret, user_id || room_id || date)`, so the ID is stable
+  within a room for the day and changes daily.
+- Anonymous messages are never shown on the poster's profile, and the API
+  never returns `author_id` for them to anyone but audited staff tools.
 - Mods see "anon #a1b2c3d4", with a "ban the poster" button that resolves
   server-side. Mods never see the real account (only admins/T&S do, and it's
   audited).
@@ -495,8 +575,11 @@ anonymous to other users, and we keep as little about you as we can.
 
 ## 6. Moderation & Trust and Safety (non-negotiable, built from day one)
 
-Imageboard-style anonymity plus images plus a Habbo-style space popular with
-teens is the **highest-risk combination in social software**. This section is
+Imageboard-style anonymity plus "talk about anything" plus images plus a
+Habbo-style space popular with teens is the **highest-risk combination in
+social software**. The answer isn't to give up on anonymity or open speech.
+It's to enforce the hard lines (§2.2) very well and to keep teens out of
+After Dark. This section is
 what decides whether the product survives.
 
 1. **Layered moderation**
@@ -539,8 +622,14 @@ are under 18.
   realises they mis-entered as an adult can fix it instantly.
 
 **Rules for everyone (because anyone might be a teen)**
-- **All-ages content everywhere.** No adult Boards, no sexual content, no gore.
-  (Phase 2 image uploads are scanned and held to the same rule.)
+- **The main world is all-ages content** (any topic, but no explicit sexual
+  content or gore; §2.2). Adult content lives only in **After Dark**, which
+  needs a real age check, not a typed birth year, and teen accounts can never
+  enter. (Phase 2 image uploads are scanned and held to the same rules.)
+- **Anonymity doesn't switch off protections.** Other people can't see who
+  an anonymous user is, but the server always knows the account's age band.
+  So the personal-info filter, grooming-risk detection and teen-report
+  priority all work the same in anonymous rooms.
 - **Everything happens in public rooms in the MVP**: no DMs, no private rooms.
   Public rooms are the safest place to chat because others, mods and filters
   can all see what's said.
@@ -598,12 +687,19 @@ are under 18.
   assessment**; Habit is "likely to be accessed by children", so the
   children's safety duties apply) and the ICO **Age Appropriate Design Code**
   (high-privacy defaults for under-18s, which §6.1 is designed to meet).
-  Keeping adult content out avoids the strict age-check duties.
+  After Dark's adult content means **highly effective age assurance** is
+  required for it (hence a third-party check, not self-declaration). Keep
+  pornographic images out entirely.
 - **EU**: DSA Article 28 (appropriate measures to protect minors; no
   profiling-based ads to minors).
 - **US states**: several states have passed minors' social-media laws
   (age verification / parental consent), many under legal challenge. Get
   advice on which launch states to include.
+- **Open speech**: Section 230 (US) protects hosting users' speech. EU/UK
+  "illegal content" duties still apply, so we need a notice-and-action flow
+  and country-specific legal takedowns (some speech is illegal in Germany or
+  France but not the US). Geo-restrict rather than delete worldwide where
+  possible.
 - **No-email accounts + teens**: confirm with a lawyer that self-declared
   birth year plus the §6.1 protections is enough for launch markets, and
   that the data-minimisation and retention policy fits law-enforcement
@@ -623,9 +719,12 @@ are under 18.
    channels and custom emotes (like Discord server boosts).
 4. **Creator revenue share** (later): mods/artists design furni and get a
    cut of sales.
-5. **No** pay-for-visibility on posts, and no ads at launch (ads plus
-   anonymous UGC means brand-safety problems; revisit later with contextual
-   ads only).
+5. **No** pay-for-visibility on posts, and **no ads**: advertisers avoid
+   anonymous, open-speech platforms (4chan's own history shows this), so the
+   business shouldn't depend on them. Cosmetics and subscriptions don't
+   care what people talk about.
+6. Pick payment providers that accept open-speech UGC platforms, and keep
+   After Dark free of pornographic content, so payments aren't at risk.
 
 ---
 
@@ -680,7 +779,9 @@ discounted for small platforms; apply early.
 ## 12. Top risks & mitigations
 | Risk | Mitigation |
 |---|---|
-| Becomes a haven for illegal or extremist content | Hash scanning, account-backed anonymity, paid T&S, clear policy enforced from day 1 |
+| Becomes a haven for illegal or extremist content | Hard lines enforced fast and consistently (§2.2); hash scanning; account-backed anonymity so bans stick; paid T&S; "moderate behaviour, not opinions" applied evenly |
+| Open speech scares off seed communities, app stores or payment providers | Main world stays all-ages and welcoming; After Dark is age-gated, web-only by default and off the marketing; no ads in the model; no pornographic images |
+| After Dark turns hostile and leaks into the main world | Separate Boards and rooms, no cross-posting into the main world, anti-raid tools, harassment of people is a hard line even in After Dark |
 | Child safety incident (teens + anonymity: the top risk) | Whole platform safe for 13-year-olds by default; public rooms only in the MVP; personal-info filter and grooming-risk detection; prioritised teen reports; trained mods on shift at teen peak hours; children's risk assessment before launch (§6.1) |
 | Empty world ("ghost town") | Launch small and dense (few Hubs, not many); greeters at peak hours; show *recent* chat on doors so rooms feel alive even when quiet; scheduled events; later, threads on the noticeboard |
 | Walking feels slow or gimmicky | Navigator teleport and list view always available; playtest the time to first message weekly; cut anything that adds steps before saying hi |
