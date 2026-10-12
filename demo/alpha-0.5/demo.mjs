@@ -15,6 +15,7 @@
 //   node demo.mjs --wait 20  wait 20 seconds first
 //   node demo.mjs --windowed play in a normal window instead of full screen
 //   node demo.mjs --check    play invisibly, saving a screenshot per caption
+//   node demo.mjs --hour 21  start at plaza night instead of the afternoon
 
 import { chromium } from "playwright-core";
 import { spawn, execFileSync } from "node:child_process";
@@ -35,6 +36,10 @@ const waitAt = args.indexOf("--wait");
 // each caption into .bin/shots, to check the tour still works.
 const checking = flag("--check");
 const waitSecs = flag("--now") || checking ? 0 : waitAt >= 0 ? Number(args[waitAt + 1]) || 0 : 10;
+// --hour sets the Plaza's time of day when the tour starts (0–24; 14 is a
+// sunny afternoon, 19 sunset, 21 night with the skyline lit up).
+const hourAt = args.indexOf("--hour");
+const startHour = hourAt >= 0 ? Number(args[hourAt + 1]) % 24 || 0 : 14;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const later = (ms, fn) => sleep(ms).then(fn).catch((e) => console.warn("  (demo step skipped:", e.message + ")"));
@@ -78,7 +83,7 @@ class Bot {
     this.ws = new WebSocket(`ws://localhost:${PORT}/ws`);
     this.ws.onmessage = (e) => {
       const m = JSON.parse(e.data);
-      this.waiters = this.waiters.filter((w) => !(w.t === m.t && (w.resolve(m), true)));
+      this.waiters = this.waiters.filter((w) => !(w.t === m.t && (!w.match || w.match(m)) && (w.resolve(m), true)));
     };
     await new Promise((ok, fail) => { this.ws.onopen = ok; this.ws.onerror = fail; });
     await this.waitFor("room");
@@ -88,9 +93,9 @@ class Bot {
     return this;
   }
 
-  waitFor(t, ms = 6000) {
+  waitFor(t, ms = 6000, match = null) {
     return new Promise((resolve) => {
-      const w = { t, resolve };
+      const w = { t, resolve, match };
       this.waiters.push(w);
       setTimeout(() => resolve(null), ms);
     });
@@ -103,6 +108,57 @@ class Bot {
   emote(emote) { this.send({ t: "emote", emote }); }
   async go(room) { this.send({ t: "teleport", room }); await this.waitFor("room"); }
   close() { try { this.ws.close(); } catch {} }
+
+  // The forum: every room has a board of threads. Posts show your name,
+  // or an anonymous tag when anon is set; post returns the thread's id.
+  async post(title, text, anon = false) {
+    if (anon) this.send({ t: "named", on: false });
+    this.send({ t: "post_thread", title, text });
+    const m = await this.waitFor("posted_thread");
+    if (anon) this.send({ t: "named", on: true });
+    return m?.thread.id;
+  }
+  async reply(thread, text, anon = false) {
+    if (anon) this.send({ t: "named", on: false });
+    this.send({ t: "post_reply", thread, text });
+    await sleep(150);
+    if (anon) this.send({ t: "named", on: true });
+  }
+  vote(thread, value) { this.send({ t: "vote", thread, value }); }
+  // threadTitled waits for a new thread with this title to go up on the
+  // board of the room they're in, and returns its id.
+  async threadTitled(title, ms = 30000) {
+    const m = await this.waitFor("board_update", ms, (m) => m.thread.title === title);
+    return m?.thread.id;
+  }
+}
+
+// seedForum fills the Plaza's board before the tour starts: a mix of named
+// and anonymous threads, replies (with the OP joining in) and votes, so the
+// sorts have something to sort.
+async function seedForum({ mia, leo, zoe, sam, kai }) {
+  const pineapple = await kai.post("Pineapple on pizza: yes or no? 🍍", "Settle this once and for all. Upvote for yes, downvote for no.", true);
+  const food = await leo.post("What's the most underrated food?", "Mine's cold pizza for breakfast. Fight me.");
+  const squad = await zoe.post("Looking for a squad tonight 🎮", "Anyone up for co-op later? I'll be in the arcade around 8.", true);
+  const wins = await sam.post("Post your gym wins 💪", "Hit a 100kg squat today after 6 months of trying. Small wins count!");
+  const night = await mia.post("Hot take: the Plaza at night is the best place on the internet", "The skyline lights up, the fountain glows and everyone's out on the benches. Change my mind.", true);
+
+  await leo.reply(night, "agreed, the neon signs at dusk are unreal 🤌", true);
+  await zoe.reply(night, "the pigeons are the real stars here tbh 🐦", true);
+  await mia.reply(night, "see, people get it ✨", true);
+  await kai.reply(night, "ok I'm convinced, see everyone at 9", true);
+  await kai.reply(wins, "HUGE. congrats!!");
+  await mia.reply(wins, "goals 🙌", true);
+  await sam.reply(pineapple, "absolutely not.", true);
+  await zoe.reply(pineapple, "yes, and I will die on this hill", true);
+  await mia.reply(food, "a really good plain bagel", true);
+
+  for (const b of [leo, zoe, sam, kai]) b.vote(night, 1);
+  for (const b of [mia, leo, kai]) b.vote(wins, 1);
+  for (const b of [mia, kai]) b.vote(squad, 1);
+  for (const b of [zoe, sam]) b.vote(food, 1);
+  for (const [b, v] of [[mia, 1], [zoe, 1], [sam, -1], [leo, -1]]) b.vote(pineapple, v);
+  await sleep(500);
 }
 
 // Styles index the client's palettes: skin 0–5, hair 0–7, outfit 0–7,
@@ -119,16 +175,20 @@ const CAST = {
 
 const OVERLAY_CSS = `
   #quest, #hint, #today { display: none !important; }
+  /* The caption and cards are popovers, so they can sit above the board's
+     dialogs (which live in the browser's top layer). */
+  #demo-caption, #demo-card { margin: 0; border: 0; overflow: visible; }
   #demo-caption {
-    position: fixed; z-index: 50; left: calc((100vw - var(--inset-r, 0px)) / 2); bottom: 104px;
+    position: fixed; z-index: 50; inset: auto; left: calc((100vw - var(--inset-r, 0px)) / 2); bottom: 104px;
     transform: translate(-50%, 12px); opacity: 0; transition: opacity .6s ease, transform .6s ease;
     max-width: min(78vw, 900px); padding: 14px 30px; border-radius: 999px; pointer-events: none;
     background: rgb(34 22 58 / 0.86); color: #fff; text-align: center;
     font: 800 26px/1.3 "Nunito", "Segoe UI", system-ui, sans-serif; box-shadow: 0 10px 30px rgb(30 10 60 / .3);
   }
   #demo-caption.on { opacity: 1; transform: translate(-50%, 0); }
+  #demo-caption.top { top: 14px; bottom: auto; left: 50%; max-width: 96vw; white-space: nowrap; padding: 10px 26px; font-size: 22px; }
   #demo-card {
-    position: fixed; inset: 0; z-index: 60; display: grid; place-content: center; gap: 18px; text-align: center;
+    position: fixed; inset: 0; width: 100vw; height: 100vh; max-width: none; max-height: none; z-index: 60; display: grid; place-content: center; gap: 18px; text-align: center;
     background: radial-gradient(circle at 30% 20%, #ff8fc8, #a77bff 55%, #5b4bd6); color: #fff;
     font-family: "Nunito", "Segoe UI", system-ui, sans-serif; opacity: 0; transition: opacity 1s ease; pointer-events: none;
   }
@@ -151,16 +211,29 @@ async function openBrowser() {
   await page.goto(BASE);
   await page.waitForFunction(() => typeof state !== "undefined" && state.room && state.you);
   await page.addStyleTag({ content: OVERLAY_CSS });
-  await page.evaluate(() => {
+  await page.evaluate((hour) => {
     const caption = document.createElement("div");
     caption.id = "demo-caption";
     const card = document.createElement("div");
     card.id = "demo-card";
+    for (const el of [caption, card]) el.popover = "manual";
     document.body.append(caption, card);
+    // raise brings the overlays back on top, after a dialog opens.
+    window.demoRaise = () => {
+      for (const el of [caption, card]) {
+        if (el.matches(":popover-open")) el.hidePopover();
+        el.showPopover();
+      }
+    };
+    demoRaise();
+    // Pin the Plaza's clock (a 24-minute day) to start at the chosen hour,
+    // so the tour isn't in the dark if it happens to be plaza night.
+    const t0 = Date.now(), realCycle = dayCycle;
+    dayCycle = () => realCycle(DAY_MS * (hour / 24) + (Date.now() - t0));
     // Signing up shows a recovery code after your first message; the demo
     // closes it.
     setInterval(() => { if ($("recoveryDialog").open) $("savedCode").click(); }, 200);
-  });
+  }, startHour);
   return { browser, page };
 }
 
@@ -195,14 +268,73 @@ function you(page) {
       await page.waitForFunction((r) => state.room?.id === r, room, { timeout: 10000 });
       await sleep(600);
     },
-    async caption(text) {
-      await page.evaluate((t) => {
+    // caption shows a line of narration at the bottom, or at the top (top)
+    // while the board is open so it doesn't cover it.
+    async caption(text, { top = false } = {}) {
+      await page.evaluate(([t, top]) => {
         const c = document.getElementById("demo-caption");
         if (!t) { c.classList.remove("on"); return; }
         c.classList.remove("on");
-        setTimeout(() => { c.textContent = t; c.classList.add("on"); }, c.textContent ? 350 : 0);
-      }, text);
+        setTimeout(() => { c.textContent = t; c.classList.toggle("top", top); c.classList.add("on"); }, c.textContent ? 350 : 0);
+      }, [text, top]);
       if (text) snap(2500);
+    },
+
+    // ---- the forum, driven through the real board UI ----
+    async openBoard() {
+      await page.evaluate(() => { openBoard(); demoRaise(); });
+      await page.locator("#threads .thread-open").first().waitFor({ timeout: 10000 });
+      await sleep(1800);
+    },
+    async sortBy(sort) {
+      await page.click(`.sorts [data-sort="${sort}"]`);
+      await sleep(1800);
+    },
+    async upvoteTop() {
+      await page.locator("#threads li").first().locator("button.vote").first().click();
+      await sleep(1200);
+    },
+    async openTopThread() {
+      await page.locator("#threads .thread-open").first().click();
+      await page.locator("#threadView").waitFor({ state: "visible", timeout: 10000 });
+      await sleep(2500);
+    },
+    async reply(text) {
+      await page.locator("#replyText").click();
+      await page.locator("#replyText").pressSequentially(text, { delay: 55 });
+      await sleep(400);
+      await page.evaluate(() => $("replyForm").requestSubmit());
+      await sleep(1800);
+    },
+    async backToBoard() {
+      await page.click("#backToBoard");
+      await sleep(1200);
+    },
+    // newThread posts anonymously: your name stays hidden on the board.
+    async newThread(title, text) {
+      await act({ t: "named", on: false });
+      await page.click("#newThreadBtn");
+      await page.evaluate(() => demoRaise());
+      await sleep(600);
+      await page.locator('#threadForm [name="title"]').pressSequentially(title, { delay: 45 });
+      await sleep(300);
+      await page.locator('#threadForm [name="text"]').pressSequentially(text, { delay: 30 });
+      await sleep(500);
+      await page.click("#threadSubmit");
+      await page.waitForFunction((t) => state.thread?.thread.title === t, title, { timeout: 10000 });
+      await act({ t: "named", on: true });
+      await sleep(1000);
+    },
+    async closeBoard() {
+      await page.click("#boardClose");
+      await sleep(800);
+    },
+    async showNotifications(ms = 3500) {
+      await page.click("#notesBtn");
+      await page.evaluate(() => demoRaise());
+      await sleep(ms);
+      await page.click("#notesClose");
+      await sleep(600);
     },
     async card(html) {
       await page.evaluate((h) => {
@@ -219,7 +351,8 @@ function you(page) {
 
 const TITLE = `<h1>Habit</h1><span class="tag">alpha 0.5</span><p>Walk in. Say hi.</p>`;
 const END = `<h1>Habit</h1><span class="tag">alpha 0.5</span><p>Walk in. Say hi.</p>
-  <small>Anonymous by default · No email or phone · Built with Go, Postgres and WebSockets</small>`;
+  <small>Live rooms + forums that stay · Anonymous by default · No email or phone</small>
+  <small>Built with Go, Postgres and WebSockets</small>`;
 
 async function tour(me, bots) {
   const { mia, leo, zoe, sam, kai } = bots;
@@ -259,6 +392,32 @@ async function tour(me, bots) {
   later(2600, () => sam.say("the hot dogs here are elite 🌭"));
   later(4200, () => kai.say("you have to try the arcade"));
   await sleep(5200);
+
+  // The forum: the Plaza's board.
+  await me.caption("Every room has a forum too: threads that stay, with upvotes and downvotes.");
+  await me.use("board", 600);
+  await me.openBoard();
+  await me.caption("Sort it like Reddit: Latest, New, Hot, Top.", { top: true });
+  await me.sortBy("hot");
+  await me.sortBy("top");
+  await me.upvoteTop();
+  await me.caption("Anonymous by default, like an imageboard. OP marks the original poster.", { top: true });
+  await me.openTopThread();
+  await sleep(1500);
+  await me.reply("the fountain at night is unreal 🌙");
+  await me.backToBoard();
+
+  await me.caption("Start your own thread. No email, no phone, no real name.", { top: true });
+  const MY_POST = "First day here. What should I check out?";
+  // The others spot the new post and answer it, live.
+  later(0, async () => { const id = await mia.threadTitled(MY_POST); await sleep(2200); await mia.reply(id, "welcome!! the arcade is a must 🕹️", true); });
+  later(0, async () => { const id = await leo.threadTitled(MY_POST); await sleep(4200); await leo.reply(id, "hit the punching bag in the Gym, trust me 🥊"); });
+  later(0, async () => { const id = await zoe.threadTitled(MY_POST); await sleep(6200); await zoe.reply(id, "come find us in Gaming tonight 🎮", true); });
+  await me.newThread(MY_POST, "Just walked in from the Plaza. Where's everyone hanging out?");
+  await me.caption("Replies arrive live, and you get a 🔔 when someone answers.", { top: true });
+  await sleep(7500);
+  await me.closeBoard();
+  await me.showNotifications();
 
   await me.caption("Shake a tree, grab a snack, sit on a bench.");
   await me.use("tree-s", 1400);
@@ -325,6 +484,8 @@ async function main() {
   console.log("Bringing in the demo characters...");
   const bots = {};
   for (const [name, style] of Object.entries(CAST)) bots[name] = await new Bot(name, style).connect();
+  console.log("Filling the Plaza's forum...");
+  await seedForum(bots);
 
   console.log("Opening Chrome...");
   const { browser, page } = await openBrowser();
@@ -338,7 +499,7 @@ async function main() {
     for (let s = waitSecs; s > 0; s--) { process.stdout.write(`  ${s}... `); await sleep(1000); }
     console.log();
   }
-  console.log("Playing the tour (about 90 seconds)...");
+  console.log("Playing the tour (about two minutes)...");
   try {
     await tour(me, bots);
     console.log("Done! Stop your recording now.");
