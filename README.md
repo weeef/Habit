@@ -27,7 +27,7 @@ One-time setup:
 2. Open a terminal (on Windows, "Git Bash" or "Command Prompt") in the folder
    where you want Habit, and run:
    ```sh
-   git clone -b claude/hybrid-platform-concept-plan-l0im18 https://github.com/weeef/Snoo4.git habit
+   git clone -b claude/hybrid-platform-concept-plan-l0im18 https://github.com/weeef/Habit.git habit
    ```
    This creates a `habit` folder linked to the GitHub repo.
 
