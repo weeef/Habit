@@ -42,7 +42,7 @@ func TestPlazaLayout(t *testing.T) {
 	}
 	// Every gate, the spawn and every bench can reach the fountain's side.
 	for _, from := range []Point{p.Spawn, {1, 10}, {10, 1}} {
-		if FindPath(p, from, Point{14, 15}) == nil {
+		if FindPath(p, from, Point{13, 15}) == nil {
 			t.Errorf("can't walk from %v to the fountain", from)
 		}
 	}

@@ -47,6 +47,7 @@ const (
 	PropTree     = "tree"     // shake it
 	PropBell     = "bell"     // ring it
 	PropLamp     = "lamp"     // decoration
+	PropBush     = "bush"     // decoration: a leafy shrub (Variant "flowers" blooms)
 	PropBoard    = "board"    // the room's noticeboard
 	PropClock    = "clock"    // shows the plaza's time of day
 	PropCart     = "cart"     // a food cart (Variant: hotdog, pretzel, halal, coffee); grab a snack
@@ -95,9 +96,9 @@ func (p *Prop) Flat() bool { return p.Kind == PropManhole }
 
 // Room is the static definition of a room.
 //
-// Rows draws the floor plan: '.', ',' and ':' are walkable floor in three
-// materials (the client picks colours per room, e.g. paving, cobbles and
-// paths in the Plaza); anything else is empty space. Rows[y][x] is the tile at (x, y).
+// Rows draws the floor plan: '.', ',', ':' and ';' are walkable floor in four
+// materials (the client picks colours per room, e.g. paving, cobbles, paths
+// and lawns in the Plaza); anything else is empty space. Rows[y][x] is the tile at (x, y).
 type Room struct {
 	ID       string
 	Name     string
@@ -124,7 +125,7 @@ func (r *Room) Floor(p Point) bool {
 		return false
 	}
 	switch r.Rows[p.Y][p.X] {
-	case '.', ',', ':':
+	case '.', ',', ':', ';':
 		return true
 	}
 	return false

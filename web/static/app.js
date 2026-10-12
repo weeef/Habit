@@ -56,11 +56,13 @@ const EMOJI = { wave: "👋", dance: "💃", laugh: "😂", heart: "❤️", sit
 // The Plaza is outdoors in a bright city square with a day/night cycle
 // (see dayCycle); its look doesn't follow the page's dark mode. Materials
 // map floor characters to colours; "ring" is the inlay round the fountain.
+// ";" is grass, which gets flowers and tufts of its own (lawnDeco).
 const THEMES = {
   plaza: {
-    accent: "#ff6fae", deco: null, outdoor: true, void: "#d6eeff",
+    accent: "#ff6fae", deco: null, lawnDeco: true, outdoor: true, void: "#d6eeff",
     materials: {
       ".": ["#f6f1ea", "#f1ebe3"], ",": ["#e6e4ea", "#e0dee5"], ":": ["#fde9d0", "#f9e2c6"],
+      ";": ["#bfe6a2", "#b6e098"],
       ring: ["#f9dfe9", "#f5d7e3"],
     },
   },
@@ -837,7 +839,7 @@ function toTile(px, py) {
 
 function isFloor(x, y) {
   const rows = state.room?.rows;
-  return !!rows && y >= 0 && y < rows.length && x >= 0 && x < rows[y].length && ".,:".includes(rows[y][x]);
+  return !!rows && y >= 0 && y < rows.length && x >= 0 && x < rows[y].length && ".,:;".includes(rows[y][x]);
 }
 
 function doorAt(x, y) {
@@ -1946,20 +1948,37 @@ function decoModel(kind, r) {
 
 const STONE = ["#f1e8f2", "#e6dbea", "#efe4ec"];
 
-// fountainModel: a round stone basin (2×2 tiles) with a pedestal and a
-// little bowl on top. The water is drawn live (see drawFountain).
-function fountainModel() {
-  return cachedModel("fountain", () => {
+// The fountain is three tiers, about twice as tall as a person, on 4×4
+// tiles: a wide stone basin, a pedestal holding a middle bowl, and a small
+// top bowl. It's two models (lower and upper) so the middle bowl's water
+// can be drawn between them; all the water is drawn live (see
+// drawFountain). FOUNTAIN holds the water levels and bowl sizes, in tiles.
+const FOUNTAIN = { pool: 0.52, poolR: 1.7, midH: 1.84, midR: 0.68, topH: 3.02, topR: 0.32 };
+
+function fountainModel(upper) {
+  return cachedModel("fountain" + upper, () => {
     const vox = [];
     const stone = (u, v, k) => STONE[Math.floor(hash2(u * 3 + k, v * 7) * 3)];
-    for (let u = -10; u <= 9; u++) {
-      for (let v = -10; v <= 9; v++) {
+    const lip = () => "#fbf5f8";
+    for (let u = -20; u <= 19; u++) {
+      for (let v = -20; v <= 19; v++) {
         const d = Math.hypot(u + 0.5, v + 0.5);
-        if (d <= 9.6 && d >= 7.9) box(vox, "rim", u, u, v, v, 0, 2, stone);
-        if (d <= 3.3 && d >= 2) box(vox, "bowl", u, u, v, v, 6, 6, stone);
+        if (!upper) {
+          if (d <= 19.6 && d >= 16.8) box(vox, "rim", u, u, v, v, 0, 4, stone);
+          if (d <= 19.1 && d >= 17.3) box(vox, "rim", u, u, v, v, 5, 5, lip);
+          if (d <= 3.6) box(vox, "pedestal", u, u, v, v, 0, 2, stone);
+          if (d <= 2.2) box(vox, "pedestal", u, u, v, v, 3, 14, stone);
+          if (d <= 5) box(vox, "bowl", u, u, v, v, 15, 15, stone);
+          if (d <= 7.6) box(vox, "bowl", u, u, v, v, 16, 16, stone);
+          if (d <= 7.6 && d >= 6.3) box(vox, "bowl", u, u, v, v, 17, 18, (uu, vv, k) => (k === 18 ? lip() : stone(uu, vv, k)));
+        } else {
+          if (d <= 1.3) box(vox, "stem", u, u, v, v, 19, 27, stone);
+          if (d <= 2.4) box(vox, "top", u, u, v, v, 28, 28, stone);
+          if (d <= 3.8) box(vox, "top", u, u, v, v, 29, 29, stone);
+          if (d <= 3.8 && d >= 2.8) box(vox, "top", u, u, v, v, 30, 30, lip);
+        }
       }
     }
-    box(vox, "pedestal", -1, 0, -1, 0, 0, 6, stone);
     return { voxels: finishModel(vox) };
   });
 }
@@ -1981,18 +2000,50 @@ function benchModel() {
   });
 }
 
-// treeModel: a cherry blossom tree in a stone planter, on one tile.
-function treeModel() {
-  return cachedModel("tree", () => {
+// treeModel: a cherry blossom tree in a stone planter, on one tile. The
+// "leafy" variant is a taller, rounder green tree growing straight out of
+// the lawn.
+const LEAVES = {
+  cherry: ["#ffc6dd", "#ffb3d1", "#ff9fc6", "#ffd6e7"],
+  leafy: ["#7fcf8e", "#6cc27f", "#8fd99b", "#5fb873"],
+};
+
+function treeModel(variant) {
+  const leafy = variant === "leafy";
+  return cachedModel("tree" + (leafy ? "leafy" : ""), () => {
     const vox = [];
-    box(vox, "planter", -4, 3, -4, 3, 0, 2, (u, v, k) => (u === -4 || u === 3 || v === -4 || v === 3 ? (k === 2 ? "#f6eef3" : "#e9dde6") : "#9b7a62"));
-    box(vox, "trunk", -1, 0, -1, 0, 2, 10, (u, v, k) => (k % 3 ? "#9b6b4e" : "#8a5d42"));
-    const pinks = ["#ffc6dd", "#ffb3d1", "#ff9fc6", "#ffd6e7"];
-    for (let u = -6; u <= 5; u++) {
-      for (let v = -6; v <= 5; v++) {
-        for (let k = 9; k <= 18; k++) {
-          const e = ((u + 0.5) / 5.6) ** 2 + ((v + 0.5) / 5.6) ** 2 + ((k - 13.5) / 4.6) ** 2;
-          if (e <= 1) vox.push({ part: "leaves", u, v, k, c: pinks[Math.floor(hash2(u + k * 5, v - k) * 4)] });
+    if (leafy) box(vox, "planter", -2, 1, -2, 1, 0, 0, () => "#8fcf7a"); // a tuft of grass round the trunk
+    else box(vox, "planter", -4, 3, -4, 3, 0, 2, (u, v, k) => (u === -4 || u === 3 || v === -4 || v === 3 ? (k === 2 ? "#f6eef3" : "#e9dde6") : "#9b7a62"));
+    const top = leafy ? 13 : 10, mid = leafy ? 17.5 : 13.5, r = leafy ? 6.4 : 5.6, rk = leafy ? 5.4 : 4.6;
+    box(vox, "trunk", -1, 0, -1, 0, leafy ? 0 : 2, top, (u, v, k) => (k % 3 ? "#9b6b4e" : "#8a5d42"));
+    const colors = leafy ? LEAVES.leafy : LEAVES.cherry;
+    const span = Math.ceil(r);
+    for (let u = -span; u < span; u++) {
+      for (let v = -span; v < span; v++) {
+        for (let k = Math.floor(mid - rk); k <= Math.ceil(mid + rk); k++) {
+          const e = ((u + 0.5) / r) ** 2 + ((v + 0.5) / r) ** 2 + ((k - mid) / rk) ** 2;
+          if (e <= 1) vox.push({ part: "leaves", u, v, k, c: colors[Math.floor(hash2(u + k * 5, v - k) * 4)] });
+        }
+      }
+    }
+    return { voxels: finishModel(vox) };
+  });
+}
+
+// bushModel: a round leafy shrub on one tile; the "flowers" variant is
+// dotted with blossoms.
+function bushModel(variant) {
+  return cachedModel("bush" + variant, () => {
+    const vox = [];
+    const blooms = ["#ffb3d1", "#ffe08a", "#ffffff", "#c9b8ff"];
+    for (let u = -5; u <= 4; u++) {
+      for (let v = -5; v <= 4; v++) {
+        for (let k = 0; k <= 7; k++) {
+          const e = ((u + 0.5) / 4.8) ** 2 + ((v + 0.5) / 4.8) ** 2 + ((k - 2.5) / 4.6) ** 2;
+          if (e > 1) continue;
+          const h = hash2(u * 7 + k, v * 13 - k);
+          const bloom = variant === "flowers" && e > 0.6 && h < 0.18;
+          vox.push({ part: "leaves", u, v, k, c: bloom ? blooms[Math.floor(h * 22) % 4] : LEAVES.leafy[Math.floor(h * 4)] });
         }
       }
     }
@@ -2314,7 +2365,7 @@ function tileColors(ch, x, y) {
     const f = state.ringAt;
     if (ch === "." && mats.ring && f) {
       const d = Math.hypot(x - f.x, y - f.y);
-      if (d > 2.3 && d < 3.3) return mats.ring;
+      if (d > f.r + 0.3 && d < f.r + 1.1) return mats.ring;
     }
     return mats[ch] || mats["."];
   }
@@ -2335,7 +2386,7 @@ function drawFloor(z) {
     }
   }
   const fountain = (state.room.props || []).find((p) => p.kind === "fountain");
-  state.ringAt = fountain ? propGeom(fountain) : null;
+  state.ringAt = fountain ? { ...propGeom(fountain), r: fountain.w / 2 } : null;
 
   for (const [x, y, { sx, sy }, ch] of tiles) {
     const [A] = tileColors(ch, x, y);
@@ -2375,12 +2426,15 @@ function drawFloor(z) {
   }
   ctx.fill();
 
-  // Decorations on about one tile in four.
-  for (const [x, y] of tiles) {
+  // Decorations on about one tile in four; lawns get flowers and grass
+  // tufts on about half their tiles.
+  for (const [x, y, , ch] of tiles) {
     const r = hash2(x, y);
-    if (!t.deco || r > 0.27 || doorAt(x, y) || propAt(x, y)) continue;
+    const lawn = ch === ";" && t.lawnDeco;
+    const deco = lawn ? (r < 0.2 ? "flower" : "leaf") : t.deco;
+    if (!deco || r > (lawn ? 0.5 : 0.27) || doorAt(x, y) || propAt(x, y)) continue;
     const ox = (hash2(y, x) - 0.5) * 0.5, oy = ((r * 4) % 1 - 0.5) * 0.5;
-    drawModel(decoModel(t.deco, r), x + ox, y + oy, 0, r * 6, 0.05, z);
+    drawModel(decoModel(deco, r), x + ox, y + oy, 0, r * 6, 0.05, z);
   }
 }
 
@@ -2502,15 +2556,22 @@ function drawProp(p, gm, z, now) {
   switch (p.kind) {
     case "fountain": {
       drawFountain(gm, z, now, "under");
-      addHit(p, drawSprite(sprite("fountain", fountainModel(), 0, 0.1, z), sx, sy));
+      const lower = drawSprite(sprite("fountain-lo", fountainModel(false), 0, 0.1, z), sx, sy);
+      drawFountain(gm, z, now, "mid");
+      const upper = drawSprite(sprite("fountain-hi", fountainModel(true), 0, 0.1, z), sx, sy);
       drawFountain(gm, z, now, "over");
+      addHit(p, lower);
+      addHit(p, upper);
       break;
     }
     case "bench":
       addHit(p, drawSprite(sprite("bench", benchModel(), gm.angle, 0.1, z), sx, sy));
       break;
+    case "bush":
+      drawSprite(sprite("bush" + p.variant, bushModel(p.variant), gm.angle, 0.1, z), sx, sy);
+      break;
     case "tree": {
-      const s = sprite("tree", treeModel(), gm.angle, 0.1, z);
+      const s = sprite("tree" + (p.variant || ""), treeModel(p.variant), gm.angle, 0.1, z);
       const t = (now - (state.shakes[p.id] || -1e9)) / 900;
       if (t < 1) {
         ctx.save();
@@ -2599,41 +2660,73 @@ function drawProp(p, gm, z, now) {
   }
 }
 
-// drawFountain draws the water: the basin pool under the stone, and the
-// little bowl and jets over it.
+// drawFountain draws the water in layers around the stone (see
+// fountainModel): "under" is the basin's pool, plus the back of the falls
+// from the middle bowl (the stone hides part of them); "mid" is the middle
+// bowl's water, the front of its falls and the back of the top bowl's;
+// "over" is the top bowl's water, the front of its falls and the jet.
 function drawFountain(gm, z, now, layer) {
+  const F = FOUNTAIN;
   if (layer === "under") {
-    isoEllipse(gm.x, gm.y, 0.16, 0.82, z);
+    isoEllipse(gm.x, gm.y, F.pool, F.poolR, z);
     const { sx, sy } = toScreen(gm.x, gm.y);
-    const wg = ctx.createLinearGradient(0, sy - 30 * z, 0, sy + 20 * z);
+    const wg = ctx.createLinearGradient(0, sy - 60 * z, 0, sy + 40 * z);
     wg.addColorStop(0, "#bdeeff");
     wg.addColorStop(1, "#7fd2f5");
     ctx.fillStyle = wg;
     ctx.fill();
-    // Ripples spreading from the middle.
+    // Ripples spreading out from where the falls land.
     ctx.strokeStyle = "rgb(255 255 255 / 0.55)";
     ctx.lineWidth = 1.2;
     for (let i = 0; i < 3; i++) {
       const t = ((now / 2600) + i / 3) % 1;
       ctx.globalAlpha = 1 - t;
-      isoEllipse(gm.x, gm.y, 0.16, 0.25 + t * 0.55, z);
+      isoEllipse(gm.x, gm.y, F.pool, 0.9 + t * 0.75, z);
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
+    drawFalls(gm, z, now, F.midH + 0.06, F.pool, F.midR + 0.08, F.midR + 0.4, 28, false);
     return;
   }
-  // The bowl's water and the jets falling into the pool.
-  isoEllipse(gm.x, gm.y, 0.7, 0.24, z);
+  if (layer === "mid") {
+    isoEllipse(gm.x, gm.y, F.midH, F.midR, z);
+    ctx.fillStyle = "#a9e6fb";
+    ctx.fill();
+    drawFalls(gm, z, now, F.midH + 0.06, F.pool, F.midR + 0.08, F.midR + 0.4, 28, true);
+    drawFalls(gm, z, now, F.topH + 0.04, F.midH, F.topR + 0.06, F.topR + 0.22, 14, false);
+    return;
+  }
+  isoEllipse(gm.x, gm.y, F.topH, F.topR, z);
   ctx.fillStyle = "#a9e6fb";
   ctx.fill();
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2 + now / 3000;
+  drawFalls(gm, z, now, F.topH + 0.04, F.midH, F.topR + 0.06, F.topR + 0.22, 14, true);
+  // The jet: a spout shooting up from the top bowl and falling back in.
+  for (let i = 0; i < 10; i++) {
+    const t = ((now / 1100) + i / 10) % 1;
+    const a = i * 2.4;
+    const d = t * 0.2;
+    const h = F.topH + 0.65 * 4 * t * (1 - t);
+    const { sx, sy } = toScreen(gm.x + Math.cos(a) * d, gm.y + Math.sin(a) * d);
+    ctx.globalAlpha = 0.9 - t * 0.4;
+    ctx.fillStyle = i % 2 ? "#ffffff" : "#c8f0ff";
+    oval(sx, sy - h * ZPX * z, 1.8 * z, 1.8 * z);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// drawFalls draws streams of drops spilling over a bowl's edge: n streams
+// round the edge, each drop arcing out from radius r0 at height h0 to r1
+// at height h1. front picks the half nearer the camera (or the far half).
+function drawFalls(gm, z, now, h0, h1, r0, r1, n, front) {
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    if (Math.cos(a) + Math.sin(a) > 0 !== front) continue;
     for (let j = 0; j < 4; j++) {
-      const t = ((now / 900) + i / 8 + j / 4) % 1;
-      const d = 0.2 + t * 0.45;
-      const h = 0.72 + 4 * 0.12 * t * (1 - t) - t * 0.56;
+      const t = ((now / 900) + j / 4 + (i % 3) / 9) % 1;
+      const d = r0 + (r1 - r0) * Math.sqrt(t);
+      const h = h0 + (h1 - h0) * t * t;
       const { sx, sy } = toScreen(gm.x + Math.cos(a) * d, gm.y + Math.sin(a) * d);
-      ctx.globalAlpha = 0.85 - t * 0.4;
+      ctx.globalAlpha = 0.85 - t * 0.35;
       ctx.fillStyle = j % 2 ? "#ffffff" : "#c8f0ff";
       oval(sx, sy - h * ZPX * z, 1.6 * z, 1.6 * z);
     }
@@ -2686,8 +2779,11 @@ function handleFx(m) {
     p.count = m.count;
     const tip = state.tip;
     if (tip?.id === p.id && !$("tooltip").hidden) showTip(PROP_TIPS.fountain(p), tip.px, tip.py, tip.r);
-    const from = a ? a.from : { x: gm.x + 1, y: gm.y + 1 };
-    state.particles.push({ kind: "coin", x: from.x, y: from.y, x1: gm.x, y1: gm.y, h: 30, vx: 0, vh: 0, life: 0, max: 650, color: "#ffcf3f", size: 3 });
+    const from = a ? a.from : { x: gm.x + 3, y: gm.y + 3 };
+    // The coin lands in the pool on the thrower's side of the pedestal.
+    const ang = Math.atan2(from.y - gm.y, from.x - gm.x);
+    const x1 = gm.x + Math.cos(ang) * 1.15, y1 = gm.y + Math.sin(ang) * 1.15;
+    state.particles.push({ kind: "coin", x: from.x, y: from.y, x1, y1, h1: FOUNTAIN.pool, h: 30, vx: 0, vh: 0, life: 0, max: 650, color: "#ffcf3f", size: 3 });
     if (state.today && m.today) { state.today.wishes = m.today; renderToday(); }
     if (m.by === state.you) {
       toast(m.today ? `🪙 Wish ${m.today} of ${m.goal} today ✨` : `🪙 You made wish #${m.count} ✨`);
@@ -2695,11 +2791,13 @@ function handleFx(m) {
     }
   } else if (p.kind === "tree") {
     state.shakes[p.id] = now;
+    const leafy = p.variant === "leafy";
+    const colors = leafy ? LEAVES.leafy : ["#ffc6dd", "#ff9fc6", "#ffffff"];
     for (let i = 0; i < 16; i++) {
       state.particles.push({
         kind: "petal", x: gm.x + (Math.random() - 0.5) * 1.1, y: gm.y + (Math.random() - 0.5) * 1.1,
-        h: 30 + Math.random() * 18, vx: (Math.random() - 0.5) * 10, vh: -(10 + Math.random() * 10),
-        life: -Math.random() * 400, max: 2600, color: ["#ffc6dd", "#ff9fc6", "#ffffff"][i % 3], size: 3 + Math.random() * 2,
+        h: (leafy ? 42 : 30) + Math.random() * 18, vx: (Math.random() - 0.5) * 10, vh: -(10 + Math.random() * 10),
+        life: -Math.random() * 400, max: 2600, color: colors[i % colors.length], size: 3 + Math.random() * 2,
       });
     }
   } else if (p.kind === "bell") {
@@ -3000,6 +3098,12 @@ function spawnHearts(avatarId) {
   }
 }
 
+// coinEnd is how high (in particle units) a tossed coin lands: on the
+// water if it has a height (h1, in tiles), else just above the ground.
+function coinEnd(q) {
+  return q.h1 == null ? 5 : (q.h1 * ZPX) / FIGURE_SCALE;
+}
+
 function drawParticles(z, dt) {
   const rows = state.room.rows;
   // Steam puffs up from the manholes.
@@ -3029,10 +3133,10 @@ function drawParticles(z, dt) {
     if (q.life < q.max) return true;
     if (q.kind === "coin") {
       // Splash! A ring on the water and a burst of sparkles.
-      spawned.push({ kind: "ring", x: q.x1, y: q.y1, h: 0.16, vx: 0, vh: 0, life: 0, max: 800, color: "#ffffff", size: 0 });
+      spawned.push({ kind: "ring", x: q.x1, y: q.y1, h: q.h1 ?? 0.16, vx: 0, vh: 0, life: 0, max: 800, color: "#ffffff", size: 0 });
       for (let i = 0; i < 10; i++) {
         spawned.push({
-          kind: "sparkle", x: q.x1 + (Math.random() - 0.5) * 0.5, y: q.y1 + (Math.random() - 0.5) * 0.5, h: 8,
+          kind: "sparkle", x: q.x1 + (Math.random() - 0.5) * 0.5, y: q.y1 + (Math.random() - 0.5) * 0.5, h: coinEnd(q) + 3,
           vx: (Math.random() - 0.5) * 18, vh: 18 + Math.random() * 20, life: 0, max: 900 + Math.random() * 500,
           color: i % 2 ? "#ffe08a" : "#ffffff", size: 2.5 + Math.random() * 2,
         });
@@ -3057,7 +3161,7 @@ function drawParticles(z, dt) {
     if (q.kind === "coin") {
       const x = q.x + (q.x1 - q.x) * t, y = q.y + (q.y1 - q.y) * t;
       const { sx, sy } = toScreen(x, y);
-      const h = 30 * (1 - t) + Math.sin(t * Math.PI) * 26 + 5 * t;
+      const h = 30 * (1 - t) + Math.sin(t * Math.PI) * 26 + coinEnd(q) * t;
       ctx.globalAlpha = 1;
       ctx.fillStyle = q.color;
       oval(sx, sy - h * z * FIGURE_SCALE, 3.2 * z * Math.abs(Math.cos(q.life / 60)) + 0.6 * z, 3.2 * z);
@@ -3173,7 +3277,7 @@ function propUnder(px, py, t) {
   const hits = state.hits || [];
   for (let i = hits.length - 1; i >= 0; i--) if (spriteHit(hits[i], px, py)) return hits[i];
   const p = propAt(t.x, t.y);
-  return p && p.kind !== "lamp" && p.kind !== "manhole" ? { id: p.id, kind: p.kind } : null;
+  return p && p.kind !== "lamp" && p.kind !== "manhole" && p.kind !== "bush" ? { id: p.id, kind: p.kind } : null;
 }
 
 const PROP_TIPS = {
@@ -3182,7 +3286,7 @@ const PROP_TIPS = {
     return ["⛲ Wishing fountain", "Click to toss a coin and make a wish 🪙", n === 1 ? "1 wish made" : `${n} wishes made`];
   },
   bench: () => ["🪑 Bench", "Click to sit down. Walk off to stand up."],
-  tree: () => ["🌸 Cherry tree", "Click to give it a shake"],
+  tree: (p) => [p?.variant === "leafy" ? "🌳 Leafy tree" : "🌸 Cherry tree", "Click to give it a shake"],
   bell: () => ["🔔 Hello bell", "Ring it to say hi to everyone here"],
   clock: () => {
     const c = dayCycle();
@@ -3797,7 +3901,8 @@ const FIREWORK_COLORS = ["#ff6fae", "#ffcd38", "#6fd3ff", "#8b6bf2", "#7be0a6", 
 function launchFireworks() {
   if (state.room?.id !== "plaza") return;
   const f = propById("fountain");
-  const cx = f ? f.at[0] + 0.5 : 15, cy = f ? f.at[1] + 0.5 : 15;
+  const g = f ? propGeom(f) : { x: 15.5, y: 15.5 };
+  const cx = g.x, cy = g.y;
   for (let i = 0; i < 16; i++) {
     state.fireworks.push({
       kind: "rocket", x: cx + (Math.random() - 0.5) * 14, y: cy + (Math.random() - 0.5) * 14, h: 0,

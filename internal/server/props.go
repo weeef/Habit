@@ -68,7 +68,7 @@ func adjacent(p *world.Prop, pos world.Point) bool {
 func (sv *Server) handleUseLocked(s *session, id string) {
 	r := s.room
 	p := r.def.PropByID(id)
-	if p == nil || p.Kind == world.PropLamp || p.Flat() {
+	if p == nil || p.Kind == world.PropLamp || p.Kind == world.PropBush || p.Flat() {
 		return
 	}
 	if p.Seat() {
