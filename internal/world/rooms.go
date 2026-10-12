@@ -72,14 +72,12 @@ func plaza() *Room {
 		}, avenueGates()...),
 		Props: []Prop{
 			// The middle: the fountain (three tiers, taller than anyone),
-			// benches facing it, lamps, and the board.
+			// benches facing it, and the board. The lawns' lamps light it.
 			{ID: "fountain", Kind: PropFountain, At: Point{14, 14}, W: 4, H: 4},
 			bench("bench-n", 15, 11, 2, 1, 0, 1),
 			bench("bench-s", 15, 20, 2, 1, 0, -1),
 			bench("bench-w", 11, 15, 1, 2, 1, 0),
 			bench("bench-e", 20, 15, 1, 2, -1, 0),
-			one("lamp-c1", PropLamp, 12, 12), one("lamp-c2", PropLamp, 19, 12),
-			one("lamp-c3", PropLamp, 12, 19), one("lamp-c4", PropLamp, 19, 19),
 			one("board", PropBoard, 12, 21), // a kiosk off to the fountain's side, so it doesn't hide it
 			// Tree-lined walks round the square, with more benches.
 			one("tree-nw", PropTree, 6, 6), one("tree-n", PropTree, 16, 6), one("tree-ne", PropTree, 25, 6),
