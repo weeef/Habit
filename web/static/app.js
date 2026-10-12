@@ -56,14 +56,15 @@ const EMOJI = { wave: "👋", dance: "💃", laugh: "😂", heart: "❤️", sit
 // The Plaza is outdoors in a bright city square with a day/night cycle
 // (see dayCycle); its look doesn't follow the page's dark mode. Materials
 // map floor characters to colours; "ring" is the inlay round the fountain.
-// ";" is grass, which gets flowers and tufts of its own (lawnDeco).
+// ";" is grass, which gets flowers and tufts of its own (lawnDeco), "=" a
+// bridge deck, and "water" colours the "~" tiles you can't walk on.
 const THEMES = {
   plaza: {
     accent: "#ff6fae", deco: null, lawnDeco: true, outdoor: true, void: "#d6eeff",
     materials: {
-      ".": ["#f6f1ea", "#f1ebe3"], ",": ["#e6e4ea", "#e0dee5"], ":": ["#fde9d0", "#f9e2c6"],
-      ";": ["#bfe6a2", "#b6e098"],
-      ring: ["#f9dfe9", "#f5d7e3"],
+      ".": ["#f3ece2", "#eee6db"], ",": ["#e6e4ea", "#e0dee5"], ":": ["#fde9d0", "#f9e2c6"],
+      ";": ["#bfe6a2", "#b6e098"], "=": ["#f4ead8", "#efe3cd"],
+      ring: ["#f9dfe9", "#f5d7e3"], water: ["#86cdee", "#7cc6ea"],
     },
   },
   // Indoor community rooms can have back walls (see drawWalls): a colour,
@@ -851,7 +852,7 @@ function toTile(px, py) {
 
 function isFloor(x, y) {
   const rows = state.room?.rows;
-  return !!rows && y >= 0 && y < rows.length && x >= 0 && x < rows[y].length && ".,:;".includes(rows[y][x]);
+  return !!rows && y >= 0 && y < rows.length && x >= 0 && x < rows[y].length && ".,:;=".includes(rows[y][x]);
 }
 
 function doorAt(x, y) {
@@ -1050,6 +1051,7 @@ function drawFrame(now) {
     if (wall) drawWalls(wall, z);
     drawFloor(z);
   });
+  drawPondShimmer(z, now);
   if (state.hover && isFloor(state.hover.x, state.hover.y) && !doorAt(state.hover.x, state.hover.y) && !propAt(state.hover.x, state.hover.y)) {
     const { sx, sy } = toScreen(state.hover.x, state.hover.y);
     const accent = theme(state.room.theme).accent;
@@ -1082,6 +1084,7 @@ function drawFrame(now) {
     const lift = p.kind === "board" ? -0.5 : p.kind === "screen" ? -2 : p.kind === "manhole" ? -50 : p.kind === "subway" ? -1.4 : 0;
     drawables.push({ depth: gm.x + gm.y + lift, draw: () => drawProp(p, gm, z, now) });
   }
+  parkDrawables(drawables, z, now);
   updateBirds(now, dt);
   for (const b of state.birds) if (b.mode !== "gone" && visible(b.x, b.y)) drawables.push({ depth: b.x + b.y, draw: () => drawBird(b, z, now) });
   // Whoever is walking or turning is drawn live, at their exact angle and
@@ -1999,6 +2002,29 @@ function fountainModel(upper) {
   });
 }
 
+// angelModel: the bronze angel on top of the fountain, wings spread and
+// one arm raised, like the Angel of the Waters at Bethesda Fountain. It
+// stands on the top bowl (its base starts at the bowl's floor).
+function angelModel() {
+  return cachedModel("angel", () => {
+    const vox = [];
+    const bronze = (u, v, k) => ((u + v + k) % 3 ? "#6fa596" : "#5f9486");
+    const stone = (u, v, k) => STONE[Math.floor(hash2(u * 3 + k, v * 7) * 3)];
+    for (let u = -2; u <= 1; u++) for (let v = -2; v <= 1; v++) {
+      if (Math.hypot(u + 0.5, v + 0.5) <= 1.9) box(vox, "base", u, u, v, v, 30, 31, stone);
+    }
+    box(vox, "body", -2, 1, -2, 1, 32, 34, bronze); // the robe
+    box(vox, "body", -1, 0, -1, 0, 35, 38, bronze); // the body
+    box(vox, "body", -1, 0, -1, 0, 39, 40, () => "#7fb3a4"); // the head
+    box(vox, "body", 1, 1, 0, 0, 38, 42, bronze); // the raised arm
+    for (const [u0, u1] of [[-5, -2], [1, 4]]) {
+      box(vox, "wings", u0, u1, -2, -2, 35, 38, bronze);
+      box(vox, "wings", u0 < 0 ? u0 : u1 - 1, u0 < 0 ? u0 + 1 : u1, -2, -2, 39, 41, bronze); // wingtips, higher at the ends
+    }
+    return { voxels: finishModel(vox) };
+  });
+}
+
 // benchModel: a wooden bench two tiles long. The sitter faces +v; the
 // backrest is behind them.
 function benchModel() {
@@ -2018,13 +2044,15 @@ function benchModel() {
 
 // treeModel: a cherry blossom tree in a stone planter, on one tile. The
 // "leafy" variant is a taller, rounder green tree growing straight out of
-// the lawn.
+// the lawn, and "willow" a weeping willow trailing its branches.
 const LEAVES = {
   cherry: ["#ffc6dd", "#ffb3d1", "#ff9fc6", "#ffd6e7"],
   leafy: ["#7fcf8e", "#6cc27f", "#8fd99b", "#5fb873"],
+  willow: ["#b5d96a", "#a3cf5c", "#c3e27a", "#93c452"],
 };
 
 function treeModel(variant) {
+  if (variant === "willow") return willowModel();
   const leafy = variant === "leafy";
   return cachedModel("tree" + (leafy ? "leafy" : ""), () => {
     const vox = [];
@@ -2041,6 +2069,63 @@ function treeModel(variant) {
           if (e <= 1) vox.push({ part: "leaves", u, v, k, c: colors[Math.floor(hash2(u + k * 5, v - k) * 4)] });
         }
       }
+    }
+    return { voxels: finishModel(vox) };
+  });
+}
+
+// willowModel: a weeping willow: a broad dome of leaves on a stout trunk,
+// with long strands hanging down round its edge.
+function willowModel() {
+  return cachedModel("willow", () => {
+    const vox = [];
+    box(vox, "trunk", -1, 0, -1, 0, 0, 12, (u, v, k) => (k % 3 ? "#8f6a4c" : "#7d5b40"));
+    const r = 7.2, mid = 15, rk = 4.2, span = Math.ceil(r);
+    const leaf = (u, v, k) => LEAVES.willow[Math.floor(hash2(u + k * 5, v - k) * 4)];
+    for (let u = -span; u < span; u++) {
+      for (let v = -span; v < span; v++) {
+        const d = Math.hypot((u + 0.5) / r, (v + 0.5) / r);
+        if (d > 1) continue;
+        const bottom = mid - rk * Math.sqrt(1 - d * d); // the dome's underside here
+        for (let k = Math.ceil(bottom); k <= mid + rk * Math.sqrt(1 - d * d); k++) vox.push({ part: "leaves", u, v, k, c: leaf(u, v, k) });
+        // Strands hanging from the rim, of different lengths.
+        if (d > 0.72 && (u + v) % 2 === 0) {
+          const low = 3 + Math.floor(hash2(u * 9, v * 5) * 6);
+          for (let k = low; k < Math.ceil(bottom); k++) vox.push({ part: "leaves", u, v, k, c: leaf(u, v, k) });
+        }
+      }
+    }
+    return { voxels: finishModel(vox) };
+  });
+}
+
+// carriageModel: a white horse pulling a red Central Park carriage with a
+// black folding hood, facing +v (the horse in front), three tiles long.
+function carriageModel() {
+  return cachedModel("carriage", () => {
+    const vox = [];
+    const white = "#f5f1ea", grey = "#d9d3ca", black = "#2b2833", red = "#b3263a", gold = "#e6b84c";
+    // The horse.
+    for (const u of [-2, 1]) for (const v of [6, 11]) box(vox, "horse", u, u, v, v, 0, 5, () => grey);
+    box(vox, "horse", -2, 1, 5, 12, 6, 9, () => white);
+    box(vox, "horse", -1, 0, 12, 13, 9, 12, () => white);
+    box(vox, "horse", -1, 0, 13, 15, 11, 13, (u, v, k) => (v === 15 && k === 11 ? grey : white));
+    box(vox, "horse", -1, 0, 11, 12, 13, 13, () => "#6b5a4a"); // the mane
+    box(vox, "horse", -1, 0, 4, 4, 6, 9, () => "#6b5a4a"); // the tail
+    // The shafts.
+    box(vox, "shafts", -3, -3, 1, 8, 6, 6, () => "#5a4232");
+    box(vox, "shafts", 2, 2, 1, 8, 6, 6, () => "#5a4232");
+    // The carriage.
+    box(vox, "carriage", -4, 3, -12, 0, 3, 8, (u, v, k) => (k === 8 ? gold : red));
+    box(vox, "carriage", -3, 2, -1, 0, 9, 9, () => black); // the driver's bench
+    box(vox, "carriage", -4, 3, -12, -11, 9, 12, () => black); // the hood's back
+    box(vox, "carriage", -4, 3, -12, -8, 13, 13, () => black); // the hood
+    box(vox, "carriage", -4, -4, -10, -8, 9, 12, () => black);
+    box(vox, "carriage", 3, 3, -10, -8, 9, 12, () => black);
+    // Wheels: big at the back, small at the front.
+    for (const u of [-5, 4]) {
+      box(vox, "wheels", u, u, -11, -8, 0, 5, (uu, v, k) => ((v === -11 || v === -8 || k === 0 || k === 5) ? black : gold));
+      box(vox, "wheels", u, u, -2, 0, 0, 3, () => black);
     }
     return { voxels: finishModel(vox) };
   });
@@ -2566,6 +2651,18 @@ function drawFloor(z) {
   const fountain = (state.room.props || []).find((p) => p.kind === "fountain");
   state.ringAt = fountain ? { ...propGeom(fountain), r: fountain.w / 2 } : null;
 
+  // Water ("~") sits a little below the ground, so the banks around it
+  // (the floor's own sides) show as edges.
+  const water = t.materials?.water;
+  if (water) {
+    for (const [x, y] of pondOf().water) {
+      const { sx, sy } = toScreen(x, y);
+      diamond(sx, sy + WATER_DROP * z, z);
+      ctx.fillStyle = shade((x + y) % 2 ? water[0] : water[1], 0.98 + hash2(x, y) * 0.04);
+      ctx.fill();
+    }
+  }
+
   for (const [x, y, { sx, sy }, ch] of tiles) {
     const [A] = tileColors(ch, x, y);
     const L = [sx - hw, sy], Bt = [sx, sy + hh], R = [sx + hw, sy];
@@ -2605,15 +2702,118 @@ function drawFloor(z) {
   ctx.fill();
 
   // Decorations on about one tile in four; lawns get flowers and grass
-  // tufts on about half their tiles.
+  // tufts on a good share of theirs.
   for (const [x, y, , ch] of tiles) {
     const r = hash2(x, y);
     const lawn = ch === ";" && t.lawnDeco;
-    const deco = lawn ? (r < 0.2 ? "flower" : "leaf") : t.deco;
-    if (!deco || r > (lawn ? 0.5 : 0.27) || doorAt(x, y) || propAt(x, y)) continue;
+    const deco = lawn ? (r < 0.16 ? "flower" : "leaf") : t.deco;
+    if (!deco || r > (lawn ? 0.4 : 0.27) || doorAt(x, y) || propAt(x, y)) continue;
     const ox = (hash2(y, x) - 0.5) * 0.5, oy = ((r * 4) % 1 - 0.5) * 0.5;
     drawModel(decoModel(deco, r), x + ox, y + oy, 0, r * 6, 0.05, z);
   }
+}
+
+// ---- the park: pond, rowboats and the Bow Bridge ----
+
+const WATER_DROP = 5;    // how far water sits below the ground, screen px at zoom 1
+
+// pondOf finds the room's water ("~") and bridge ("=") tiles, and splits
+// the water either side of the bridge into basins for the boats to circle.
+function pondOf() {
+  const room = state.room;
+  if (state.pond?.room === room) return state.pond;
+  const water = [], bridge = [];
+  room.rows.forEach((row, y) => [...row].forEach((c, x) => {
+    if (c === "~") water.push([x, y]);
+    else if (c === "=") bridge.push([x, y]);
+  }));
+  const by = bridge.length ? bridge[0][1] : Infinity;
+  const basin = (tiles) => {
+    if (tiles.length < 4) return null;
+    const xs = tiles.map((t) => t[0]), ys = tiles.map((t) => t[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, rx: Math.max(0.3, (x1 - x0) / 2 - 0.7), ry: Math.max(0.2, (y1 - y0) / 2 - 0.6) };
+  };
+  const basins = [basin(water.filter((t) => t[1] < by)), basin(water.filter((t) => t[1] > by))].filter(Boolean);
+  state.pond = { room, water, bridge, basins };
+  return state.pond;
+}
+
+// drawPondShimmer twinkles little highlights across the water.
+function drawPondShimmer(z, now) {
+  const { water } = pondOf();
+  if (!water.length) return;
+  ctx.fillStyle = "#ffffff";
+  for (const [x, y] of water) {
+    const p = hash2(x * 3, y * 7);
+    const a = Math.max(0, Math.sin(now / 700 + p * 40)) ** 6;
+    if (a < 0.05) continue;
+    const { sx, sy } = toScreen(x + (p - 0.5) * 0.5, y + (hash2(y, x) - 0.5) * 0.5);
+    ctx.globalAlpha = a * 0.8;
+    oval(sx, sy + WATER_DROP * z, 6 * z, 1.6 * z);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// parkDrawables adds the pond's rowboats and the bridge's railings to the
+// frame's depth-sorted drawables.
+function parkDrawables(drawables, z, now) {
+  const { basins, bridge } = pondOf();
+  basins.forEach((b, i) => {
+    const t = now / (9000 + i * 2500) * (i ? -1 : 1) + i * 2;
+    const x = b.cx + b.rx * Math.cos(t), y = b.cy + b.ry * Math.sin(t);
+    // Face along the way it's going round.
+    const dir = i ? -1 : 1;
+    const angle = Math.atan2(b.ry * Math.cos(t) * dir, -b.rx * Math.sin(t) * dir);
+    const bob = Math.sin(now / 500 + i) * 0.02 - WATER_DROP / ZPX;
+    drawables.push({ depth: x + y, draw: () => drawModel(rowboatModel(i), x, y, bob, angle, 0.07, z, { oars: { dk: Math.sin(now / 300 + i) > 0 ? 1 : 0 } }) });
+  });
+  if (!bridge.length) return;
+  const x0 = Math.min(...bridge.map((b) => b[0])) - 0.5, x1 = Math.max(...bridge.map((b) => b[0])) + 0.5;
+  const arch = (x) => 0.16 * Math.sin((Math.PI * (x - x0)) / (x1 - x0));
+  for (const [bx, by] of bridge) {
+    for (const side of [-0.5, 0.5]) {
+      drawables.push({ depth: bx + by + side, draw: () => drawRailing(bx - 0.5, bx + 0.5, by + side, arch, z) });
+    }
+  }
+}
+
+// drawRailing draws a stretch of the bridge's cream cast-iron railing along
+// row edge y, from x0 to x1, rising with the arch.
+function drawRailing(x0, x1, y, arch, z) {
+  const top = 0.36, steps = 4;
+  ctx.strokeStyle = "#d9cbb0";
+  ctx.lineWidth = 1.4 * z;
+  ctx.beginPath();
+  for (let i = 0; i <= steps; i++) {
+    const x = x0 + ((x1 - x0) * i) / steps;
+    const [px, py] = pw(x, y, 0, z), [qx, qy] = pw(x, y, top + arch(x), z);
+    ctx.moveTo(px, py);
+    ctx.lineTo(qx, qy);
+  }
+  ctx.stroke();
+  ctx.fillStyle = "#f6eedd";
+  const band = (h0, h1) => poly([pw(x0, y, h0 + arch(x0), z), pw(x1, y, h0 + arch(x1), z), pw(x1, y, h1 + arch(x1), z), pw(x0, y, h1 + arch(x0), z)]);
+  band(top - 0.05, top + 0.02);
+  band(0.1, 0.14);
+}
+
+// rowboatModel: a little wooden rowboat with someone rowing, facing +v.
+function rowboatModel(i) {
+  return cachedModel("rowboat" + i, () => {
+    const vox = [];
+    const wood = i ? "#c4794d" : "#d98f5f", inside = "#8d5a3a";
+    for (let v = -6; v <= 5; v++) {
+      const half = v <= -5 || v >= 4 ? 1 : 3; // narrower at bow and stern
+      box(vox, "hull", -half, half - 1, v, v, 0, 1, (u, vv, k) => (k === 1 && u > -half && u < half - 1 && vv > -6 && vv < 5 ? inside : wood));
+    }
+    const shirt = ["#ff9aa2", "#8ab4ff"][i % 2], skin = SKIN[(i * 3 + 1) % SKIN.length];
+    box(vox, "rower", -1, 0, -1, 0, 2, 4, () => shirt);
+    box(vox, "rower", -1, 0, -1, 0, 5, 6, () => skin);
+    box(vox, "oars", -6, -4, 0, 0, 2, 2, () => "#e2c08d");
+    box(vox, "oars", 3, 5, 0, 0, 2, 2, () => "#e2c08d");
+    return { voxels: finishModel(vox) };
+  });
 }
 
 // ---- walls ----
@@ -2962,8 +3162,10 @@ function drawProp(p, gm, z, now) {
       drawFountain(gm, z, now, "mid");
       const upper = drawSprite(sprite("fountain-hi", fountainModel(true), 0, 0.1, z), sx, sy);
       drawFountain(gm, z, now, "over");
+      const angel = drawSprite(sprite("angel", angelModel(), Math.PI / 4, 0.1, z), sx, sy);
       addHit(p, lower);
       addHit(p, upper);
+      addHit(p, angel);
       break;
     }
     case "bench": {
@@ -2995,6 +3197,9 @@ function drawProp(p, gm, z, now) {
       break;
     case "treadmill":
       drawSprite(sprite("treadmill", treadmillModel(), gm.angle, 0.1, z), sx, sy);
+      break;
+    case "carriage":
+      drawSprite(sprite("carriage", carriageModel(), gm.angle, 0.1, z), sx, sy);
       break;
     case "weights":
       addHit(p, drawSprite(sprite("weights", weightsModel(), gm.angle, 0.1, z), sx, sy));
@@ -3151,7 +3356,8 @@ function drawWallScreen(p, z, now) {
 // fountainModel): "under" is the basin's pool, plus the back of the falls
 // from the middle bowl (the stone hides part of them); "mid" is the middle
 // bowl's water, the front of its falls and the back of the top bowl's;
-// "over" is the top bowl's water, the front of its falls and the jet.
+// "over" is the top bowl's water and the front of its falls (the angel
+// stands in it, drawn after).
 function drawFountain(gm, z, now, layer) {
   const F = FOUNTAIN;
   if (layer === "under") {
@@ -3187,18 +3393,6 @@ function drawFountain(gm, z, now, layer) {
   ctx.fillStyle = "#a9e6fb";
   ctx.fill();
   drawFalls(gm, z, now, F.topH + 0.04, F.midH, F.topR + 0.06, F.topR + 0.22, 14, true);
-  // The jet: a spout shooting up from the top bowl and falling back in.
-  for (let i = 0; i < 10; i++) {
-    const t = ((now / 1100) + i / 10) % 1;
-    const a = i * 2.4;
-    const d = t * 0.2;
-    const h = F.topH + 0.65 * 4 * t * (1 - t);
-    const { sx, sy } = toScreen(gm.x + Math.cos(a) * d, gm.y + Math.sin(a) * d);
-    ctx.globalAlpha = 0.9 - t * 0.4;
-    ctx.fillStyle = i % 2 ? "#ffffff" : "#c8f0ff";
-    oval(sx, sy - h * ZPX * z, 1.8 * z, 1.8 * z);
-  }
-  ctx.globalAlpha = 1;
 }
 
 // drawFalls draws streams of drops spilling over a bowl's edge: n streams
@@ -3278,8 +3472,8 @@ function handleFx(m) {
     }
   } else if (p.kind === "tree") {
     state.shakes[p.id] = now;
-    const leafy = p.variant === "leafy";
-    const colors = leafy ? LEAVES.leafy : ["#ffc6dd", "#ff9fc6", "#ffffff"];
+    const leafy = p.variant === "leafy" || p.variant === "willow";
+    const colors = LEAVES[p.variant] || ["#ffc6dd", "#ff9fc6", "#ffffff"];
     for (let i = 0; i < 16; i++) {
       state.particles.push({
         kind: "petal", x: gm.x + (Math.random() - 0.5) * 1.1, y: gm.y + (Math.random() - 0.5) * 1.1,
@@ -3803,7 +3997,7 @@ function propUnder(px, py, t) {
 
 // DECOR_KINDS are props that are only for looking at (the server ignores
 // using them), so hovering one shows nothing.
-const DECOR_KINDS = new Set(["lamp", "manhole", "bush", "screen", "treadmill"]);
+const DECOR_KINDS = new Set(["lamp", "manhole", "bush", "screen", "treadmill", "carriage"]);
 
 const PROP_TIPS = {
   cabinet: () => ["🕹️ Arcade cabinet", "Click to play a round"],
@@ -3819,7 +4013,7 @@ const PROP_TIPS = {
     { couch: "🛋️ Couch", beanbag: "🫘 Beanbag", press: "🏋️ Weight bench" }[p?.variant] || "🪑 Bench",
     "Click to sit down. Walk off to stand up.",
   ],
-  tree: (p) => [p?.variant === "leafy" ? "🌳 Leafy tree" : "🌸 Cherry tree", "Click to give it a shake"],
+  tree: (p) => [{ leafy: "🌳 Leafy tree", willow: "🌿 Weeping willow" }[p?.variant] || "🌸 Cherry tree", "Click to give it a shake"],
   bell: () => ["🔔 Hello bell", "Ring it to say hi to everyone here"],
   clock: () => {
     const c = dayCycle();

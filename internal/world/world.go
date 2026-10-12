@@ -64,13 +64,14 @@ const (
 	PropWeights   = "weights"   // a dumbbell rack; do some reps
 	PropPunchbag  = "punchbag"  // throw a punch
 	PropCooler    = "cooler"    // a water cooler; grab some water
+	PropCarriage  = "carriage"  // a horse and carriage; decoration
 )
 
 // Decorative reports whether a prop is only for looking at: using it does
 // nothing, so nobody walks over to it.
 func (p *Prop) Decorative() bool {
 	switch p.Kind {
-	case PropLamp, PropBush, PropScreen, PropTreadmill:
+	case PropLamp, PropBush, PropScreen, PropTreadmill, PropCarriage:
 		return true
 	}
 	return false
@@ -115,9 +116,10 @@ func (p *Prop) Flat() bool { return p.Kind == PropManhole }
 
 // Room is the static definition of a room.
 //
-// Rows draws the floor plan: '.', ',', ':' and ';' are walkable floor in four
-// materials (the client picks colours per room, e.g. paving, cobbles, paths
-// and lawns in the Plaza); anything else is empty space. Rows[y][x] is the tile at (x, y).
+// Rows draws the floor plan: '.', ',', ':', ';' and '=' are walkable floor in
+// five materials (the client picks colours per room, e.g. paths, sidewalk,
+// crossings, lawns and a bridge in the Plaza); anything else, like '~' for
+// water, is somewhere you can't walk. Rows[y][x] is the tile at (x, y).
 type Room struct {
 	ID       string
 	Name     string
@@ -144,7 +146,7 @@ func (r *Room) Floor(p Point) bool {
 		return false
 	}
 	switch r.Rows[p.Y][p.X] {
-	case '.', ',', ':', ';':
+	case '.', ',', ':', ';', '=':
 		return true
 	}
 	return false
