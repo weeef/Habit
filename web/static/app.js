@@ -66,8 +66,19 @@ const THEMES = {
       ring: ["#f9dfe9", "#f5d7e3"],
     },
   },
-  gaming: { void: "#1c1733", floorA: "#3d3573", floorB: "#3a326e", accent: "#a78bfa", deco: "star" },
-  gym: { floorA: "#d6f2e4", floorB: "#cdeedd", accent: "#ff9466", deco: "leaf" },
+  // Indoor community rooms can have back walls (see drawWalls): a colour,
+  // a trim, a height in tiles, and a decor set that dresses them. These are
+  // the knobs a community will one day turn to make its room its own.
+  gaming: {
+    void: "#140f2a", floorA: "#2d2558", floorB: "#2a2252", accent: "#a78bfa", deco: "star",
+    materials: { ".": ["#2d2558", "#2a2252"], ",": ["#4b2f86", "#46297e"] },
+    wall: { color: "#2a2150", top: "#3d3275", trim: "#33d6ff", h: 2.6, decor: "arcade" },
+  },
+  gym: {
+    void: "#e4f1ff", floorA: "#f0d6ae", floorB: "#ebcfa3", accent: "#ff9466", deco: null,
+    materials: { ".": ["#f0d6ae", "#ebcfa3"], ",": ["#5f6575", "#5a6070"], ":": ["#7fd6c8", "#72cdbf"] },
+    wall: { color: "#f7f9fc", top: "#ffffff", trim: "#ff9466", h: 2.6, decor: "gym" },
+  },
   // The town's avenues look like the Plaza: paving, sidewalks, a skyline.
   avenue: {
     accent: "#3cc28f", deco: null, outdoor: true, void: "#d6eeff",
@@ -166,7 +177,8 @@ const state = {
   lastFrame: 0,
   hits: [],            // props drawn this frame, for clicks and hover
   birds: [],           // the plaza's pigeons
-  shakes: {},          // tree id -> when it was shaken
+  shakes: {},          // tree or punching bag id -> when it was shaken
+  flashes: {},         // arcade cabinet id -> when someone last played it
   bellAt: 0,
   draftStyle: null,    // character being designed in the signup dialog
   hover: null,         // hovered tile
@@ -877,7 +889,8 @@ function layout(now = performance.now()) {
   const H = state.room.rows.length, W = state.room.rows[0].length;
   // Room footprint in unscaled pixels, plus headroom for avatars and doors.
   const roomW = (W + H) * (TW / 2);
-  const roomH = (W + H) * (TH / 2) + 90;
+  const wall = theme(state.room.theme).wall;
+  const roomH = (W + H) * (TH / 2) + 90 + (wall ? wall.h * ZPX - 40 : 0);
   const fit = Math.min((vw - 24) / roomW, (vh - 24) / roomH);
   const close = Math.min(0.9, Math.max(0.55, Math.min(vw, vh * 1.4) / 1050)); // comfortable size for big rooms
   const v = state.view;
@@ -1029,9 +1042,12 @@ function drawFrame(now) {
   const W = state.room.rows[0].length, H = state.room.rows.length;
   const ground = [];
   for (const x of [-4.5, W + STREET_W + 0.5]) for (const y of [-4.5, H + STREET_W + 0.5]) for (const hh of [-1, 0.6]) ground.push([x, y, hh]);
-  const floorKey = `floor|${state.room.id}|${themeColor("floorA", "--floor-a")}|${themeColor("floorB", "--floor-b")}`;
+  const wall = theme(state.room.theme).wall;
+  if (wall) for (const [x, y] of [[-0.8, -0.8], [W, -0.8], [-0.8, H]]) ground.push([x, y, wall.h + 0.3]);
+  const floorKey = `floor|${state.room.id}|${state.room.doorsVer || 0}|${themeColor("floorA", "--floor-a")}|${themeColor("floorB", "--floor-b")}`;
   worldLayer(floorKey, extentOf(ground, z), z, () => {
     if (outdoors()) drawStreet(z);
+    if (wall) drawWalls(wall, z);
     drawFloor(z);
   });
   if (state.hover && isFloor(state.hover.x, state.hover.y) && !doorAt(state.hover.x, state.hover.y) && !propAt(state.hover.x, state.hover.y)) {
@@ -1063,7 +1079,7 @@ function drawFrame(now) {
     const gm = propGeom(p);
     if (!visible(gm.x, gm.y, 260)) continue;
     // Flat things (manholes, the subway's stairs) go under whoever's on them.
-    const lift = p.kind === "board" ? -0.5 : p.kind === "manhole" ? -50 : p.kind === "subway" ? -1.4 : 0;
+    const lift = p.kind === "board" ? -0.5 : p.kind === "screen" ? -2 : p.kind === "manhole" ? -50 : p.kind === "subway" ? -1.4 : 0;
     drawables.push({ depth: gm.x + gm.y + lift, draw: () => drawProp(p, gm, z, now) });
   }
   updateBirds(now, dt);
@@ -2051,6 +2067,168 @@ function bushModel(variant) {
   });
 }
 
+// ---- community furniture ----
+//
+// Like benches, these face +v (into the room), so propGeom's angle turns
+// them to face their dir.
+
+// couchModel: a squashy couch w tiles long, for the arcade's screen.
+function couchModel(w) {
+  return cachedModel("couch" + w, () => {
+    const vox = [];
+    const u0 = -w * 5, u1 = w * 5 - 1;
+    box(vox, "base", u0, u1, -4, 3, 0, 2, () => "#3f2f80");
+    box(vox, "seat", u0 + 2, u1 - 2, -2, 3, 3, 4, (u) => ((u - u0) % 10 === 0 ? "#6a4ee6" : "#7c5cff"));
+    box(vox, "back", u0, u1, -4, -3, 3, 9, (u, v, k) => (k === 9 ? "#8f74ff" : "#6a4de0"));
+    box(vox, "arms", u0, u0 + 1, -4, 3, 3, 6, () => "#5a40c8");
+    box(vox, "arms", u1 - 1, u1, -4, 3, 3, 6, () => "#5a40c8");
+    return { voxels: finishModel(vox) };
+  });
+}
+
+// beanbagModel: a slumped beanbag, higher at the back.
+function beanbagModel() {
+  return cachedModel("beanbag", () => {
+    const vox = [];
+    for (let u = -5; u <= 4; u++) for (let v = -5; v <= 4; v++) for (let k = 0; k <= 8; k++) {
+      const top = v < 0 ? 7.5 : 4.2;
+      const e = ((u + 0.5) / 4.8) ** 2 + ((v + 0.5) / 4.8) ** 2 + (k / top) ** 2;
+      if (e <= 1) vox.push({ part: "bag", u, v, k, c: hash2(u * 5 + k, v) < 0.5 ? "#ff6fae" : "#ff5a9f" });
+    }
+    return { voxels: finishModel(vox) };
+  });
+}
+
+// pressModel: a weight bench with a loaded barbell on its rack.
+function pressModel() {
+  return cachedModel("press", () => {
+    const vox = [];
+    const steel = () => "#aab2c0";
+    box(vox, "legs", -8, -7, -1, 0, 0, 2, steel);
+    box(vox, "legs", 6, 7, -1, 0, 0, 2, steel);
+    box(vox, "pad", -9, 8, -2, 1, 3, 4, (u, v, k) => (k === 4 ? "#3a3f4b" : "#2e323c"));
+    box(vox, "rack", -6, -6, -4, -4, 0, 12, steel);
+    box(vox, "rack", 5, 5, -4, -4, 0, 12, steel);
+    box(vox, "bar", -13, 12, -4, -4, 12, 12, () => "#d7dde6");
+    box(vox, "plates", -12, -11, -6, -2, 10, 14, () => "#e5484d");
+    box(vox, "plates", 10, 11, -6, -2, 10, 14, () => "#e5484d");
+    return { voxels: finishModel(vox) };
+  });
+}
+
+const CABINET_COLORS = { pink: "#ff4fb8", cyan: "#33d6ff", lime: "#8cff5a", purple: "#a06bff", orange: "#ff9a3c" };
+
+// cabinetModel: an upright arcade cabinet with a glowing screen, a lit
+// marquee and a control panel.
+function cabinetModel(color) {
+  return cachedModel("cabinet" + color, () => {
+    const vox = [];
+    const main = CABINET_COLORS[color] || CABINET_COLORS.pink, dark = "#1e1838";
+    const side = (u) => (u === -4 || u === 3 ? main : dark);
+    const lower = (u, v, k) => (k === 9 && v >= 2 ? "#2b2450" : side(u)); // the control panel's top
+    box(vox, "body", -4, 3, -4, 3, 0, 9, lower);
+    box(vox, "body", -4, 3, 4, 5, 7, 9, lower);
+    box(vox, "body", -4, 3, -4, 1, 10, 17, (u, v, k) => {
+      if (k >= 16) return hexShade(main, 1.35); // the marquee
+      if (v === 1 && u >= -3 && u <= 2 && k >= 11 && k <= 15) {
+        // The screen: a little game in progress.
+        if ((u === -2 && k === 12) || (u === 1 && k === 14)) return "#ffffff";
+        if (k === 11) return "#3a2f8a";
+        return (u + k) % 2 ? "#1c3a7a" : "#20468c";
+      }
+      return side(u);
+    });
+    vox.push({ part: "stick", u: -2, v: 4, k: 10, c: "#e5484d" }, { part: "stick", u: -2, v: 4, k: 11, c: "#ff6b6b" });
+    vox.push({ part: "btn", u: 0, v: 4, k: 10, c: "#ffd23f" }, { part: "btn", u: 1, v: 3, k: 10, c: "#33d6ff" });
+    return { voxels: finishModel(vox) };
+  });
+}
+
+// vendingModel: a soda machine with rows of cans behind the glass.
+function vendingModel() {
+  return cachedModel("vending", () => {
+    const vox = [];
+    const cans = ["#ff5a5a", "#33d6ff", "#8cff5a", "#ffd23f", "#ff9ed2"];
+    box(vox, "body", -4, 3, -4, 3, 0, 19, (u, v, k) => {
+      if (v === 3 && u <= 1 && u >= -3 && k >= 6 && k <= 17) return k % 3 === 2 ? "#cfeaff" : cans[(u + 3 + Math.floor(k / 3)) % 5];
+      if (v === 3 && u >= 2 && k >= 9 && k <= 15) return k % 2 ? "#2b2f38" : "#ffd23f"; // buttons
+      if (v === 3 && u <= 1 && k >= 2 && k <= 3) return "#2b2f38"; // the slot
+      if (k >= 18) return "#ffffff";
+      return "#e8405a";
+    });
+    return { voxels: finishModel(vox) };
+  });
+}
+
+// treadmillModel: a running machine two tiles long, its console at the
+// front.
+function treadmillModel() {
+  return cachedModel("treadmill", () => {
+    const vox = [];
+    box(vox, "deck", -3, 2, -9, 9, 0, 1, (u, v, k) => (k === 1 && u > -3 && u < 2 ? (v % 3 ? "#2b2f38" : "#363b46") : "#5f6575"));
+    box(vox, "posts", -3, -3, 8, 8, 2, 10, () => "#9aa3b2");
+    box(vox, "posts", 2, 2, 8, 8, 2, 10, () => "#9aa3b2");
+    box(vox, "rails", -3, -3, 3, 7, 9, 9, () => "#9aa3b2");
+    box(vox, "rails", 2, 2, 3, 7, 9, 9, () => "#9aa3b2");
+    box(vox, "console", -3, 2, 7, 9, 11, 12, (u, v, k) => (k === 12 && v === 8 && u >= -1 && u <= 0 ? "#8cff5a" : "#3a3f4b"));
+    return { voxels: finishModel(vox) };
+  });
+}
+
+// weightsModel: a two-tile rack of dumbbells, light to heavy.
+function weightsModel() {
+  return cachedModel("weights", () => {
+    const vox = [];
+    const steel = () => "#9aa3b2";
+    box(vox, "frame", -9, -9, -2, 1, 0, 9, steel);
+    box(vox, "frame", 8, 8, -2, 1, 0, 9, steel);
+    box(vox, "shelf", -9, 8, -2, 1, 3, 3, () => "#5f6575");
+    box(vox, "shelf", -9, 8, -3, 0, 7, 7, () => "#5f6575");
+    const heads = ["#33d6ff", "#8cff5a", "#ffd23f", "#ff9a3c", "#e5484d"];
+    heads.forEach((c, i) => {
+      const u = -7 + i * 3;
+      for (const [v0, k] of [[-2, 4], [-3, 8]]) {
+        box(vox, "bell" + i + k, u, u + 1, v0, v0, k, k + 1, () => c);
+        box(vox, "bell" + i + k, u, u + 1, v0 + 3, v0 + 3, k, k + 1, () => c);
+        box(vox, "bell" + i + k, u, u + 1, v0 + 1, v0 + 2, k, k, () => "#d7dde6");
+      }
+    });
+    return { voxels: finishModel(vox) };
+  });
+}
+
+// punchbagModel: a heavy bag hanging from a stand; the bag swings.
+function punchbagModel() {
+  return cachedModel("punchbag", () => {
+    const vox = [];
+    box(vox, "base", -4, 3, -4, 3, 0, 0, () => "#3a3f4b");
+    box(vox, "pole", -4, -4, -4, -4, 1, 20, () => "#5f6575");
+    box(vox, "arm", -4, 0, -4, -4, 20, 20, () => "#5f6575");
+    box(vox, "arm", -1, 0, -4, -1, 20, 20, () => "#5f6575");
+    for (let u = -3; u <= 2; u++) for (let v = -3; v <= 2; v++) {
+      if (Math.hypot(u + 0.5, v + 0.5) > 2.9) continue;
+      for (let k = 6; k <= 17; k++) vox.push({ part: "bag", u, v, k, c: k === 6 || k === 17 || k === 15 ? "#2b2f38" : "#e5484d" });
+    }
+    box(vox, "bag", -1, 0, -1, 0, 18, 19, () => "#9aa3b2"); // the chain
+    return { voxels: finishModel(vox) };
+  });
+}
+
+// coolerModel: a water cooler with a big blue bottle on top.
+function coolerModel() {
+  return cachedModel("cooler", () => {
+    const vox = [];
+    box(vox, "base", -3, 2, -3, 2, 0, 9, () => "#f2f4f8");
+    vox.push({ part: "taps", u: -2, v: 3, k: 7, c: "#3f8cff" }, { part: "taps", u: 1, v: 3, k: 7, c: "#e5484d" });
+    for (let u = -3; u <= 2; u++) for (let v = -3; v <= 2; v++) {
+      if (Math.hypot(u + 0.5, v + 0.5) > 2.9) continue;
+      for (let k = 10; k <= 17; k++) vox.push({ part: "bottle", u, v, k, c: (u + k) % 3 ? "#8fd3ff" : "#a9ddff" });
+    }
+    box(vox, "bottle", -1, 0, -1, 0, 18, 18, () => "#3f8cff");
+    return { voxels: finishModel(vox) };
+  });
+}
+
 function lampModel(lit) {
   return cachedModel("lamp" + lit, () => {
     const vox = [];
@@ -2438,6 +2616,228 @@ function drawFloor(z) {
   }
 }
 
+// ---- walls ----
+//
+// Indoor rooms with a theme wall get two walls, Habbo-style: one along the
+// back (behind row 0) and one down the left (behind column 0). Each is
+// drawn flat in its own plane, where u runs along the wall in tiles (left
+// to right as you look at it) and t runs down from the floor line (so up
+// is negative), scaled by WALL_UNITS so text and lines render crisply.
+// Decorations are laid out in the gaps between doors and anything mounted
+// on or standing against the wall, so any room shape gets a sensible look.
+
+const WALL_UNITS = 100;
+
+// wallPlane sets ctx's transform to a wall's plane and returns its length
+// in tiles. Undo it with ctx.restore().
+function wallPlane(side, z) {
+  const rows = state.room.rows, W = rows[0].length, H = rows.length;
+  ctx.save();
+  if (side === "back") {
+    const o = toScreen(-0.5, -0.5);
+    ctx.transform((TW / 2) * z, (TH / 2) * z, 0, ZPX * z, o.sx, o.sy);
+  } else {
+    const o = toScreen(-0.5, H - 0.5);
+    ctx.transform((TW / 2) * z, -(TH / 2) * z, 0, ZPX * z, o.sx, o.sy);
+  }
+  ctx.scale(1 / WALL_UNITS, 1 / WALL_UNITS);
+  return side === "back" ? W : H;
+}
+
+// wallSpan is where tile (x, y) and w×h tiles from it fall along a wall,
+// in that wall's u.
+function wallSpan(side, x, y, w = 1, h = 1) {
+  const H = state.room.rows.length;
+  return side === "back" ? [x, x + w] : [H - y - h, H - y];
+}
+
+// wallGaps lists the stretches of a wall with nothing in front of it.
+function wallGaps(side) {
+  const len = side === "back" ? state.room.rows[0].length : state.room.rows.length;
+  const taken = [];
+  for (const d of state.room.doors) {
+    if (side === "back" ? d.pos[1] === 0 : d.pos[0] === 0) taken.push(wallSpan(side, d.pos[0], d.pos[1]));
+  }
+  for (const p of state.room.props || []) {
+    if (side === "back" ? p.at[1] === 0 : p.at[0] === 0) taken.push(wallSpan(side, p.at[0], p.at[1], p.w, p.h));
+  }
+  taken.sort((a, b) => a[0] - b[0]);
+  const gaps = [];
+  let at = 0;
+  for (const [a, b] of taken) {
+    if (a > at) gaps.push([at, a]);
+    at = Math.max(at, b);
+  }
+  if (at < len) gaps.push([at, len]);
+  return gaps;
+}
+
+function drawWalls(wall, z) {
+  const rows = state.room.rows, W = rows[0].length, H = rows.length;
+  const T = 0.14; // thickness
+  // The faces: the back wall catches more of the light from the left.
+  ctx.fillStyle = shade(wall.color, 1);
+  poly([pw(-0.5, -0.5, 0, z), pw(W - 0.5, -0.5, 0, z), pw(W - 0.5, -0.5, wall.h, z), pw(-0.5, -0.5, wall.h, z)]);
+  ctx.fillStyle = shade(wall.color, 0.9);
+  poly([pw(-0.5, -0.5, 0, z), pw(-0.5, H - 0.5, 0, z), pw(-0.5, H - 0.5, wall.h, z), pw(-0.5, -0.5, wall.h, z)]);
+  // The ends facing the room, and the tops.
+  ctx.fillStyle = shade(wall.top, 0.85);
+  poly([pw(W - 0.5, -0.5 - T, 0, z), pw(W - 0.5, -0.5, 0, z), pw(W - 0.5, -0.5, wall.h, z), pw(W - 0.5, -0.5 - T, wall.h, z)]);
+  ctx.fillStyle = shade(wall.top, 0.95);
+  poly([pw(-0.5 - T, H - 0.5, 0, z), pw(-0.5, H - 0.5, 0, z), pw(-0.5, H - 0.5, wall.h, z), pw(-0.5 - T, H - 0.5, wall.h, z)]);
+  ctx.fillStyle = wall.top;
+  poly([pw(-0.5 - T, -0.5 - T, wall.h, z), pw(W - 0.5, -0.5 - T, wall.h, z), pw(W - 0.5, -0.5, wall.h, z), pw(-0.5, -0.5, wall.h, z), pw(-0.5, H - 0.5, wall.h, z), pw(-0.5 - T, H - 0.5, wall.h, z)]);
+
+  for (const side of ["back", "left"]) {
+    const len = wallPlane(side, z);
+    try {
+      (WALL_DECOR[wall.decor] || WALL_DECOR.plain)(side, len, wall, z);
+    } finally {
+      ctx.restore();
+    }
+  }
+}
+
+// layoutDecor places items ({ w, draw(u) }) along a wall's gaps, as many as
+// fit, spread evenly; items cycle so neighbours differ.
+function layoutDecor(side, items) {
+  let next = 0;
+  for (const [a, b] of wallGaps(side)) {
+    const room = b - a;
+    const picked = [];
+    let used = 0, misses = 0;
+    // Take the next item that still fits, skipping ones too wide, until
+    // nothing does.
+    while (misses < items.length && picked.length < 12) {
+      const it = items[next % items.length];
+      next++;
+      if (used + it.w + 0.25 * (picked.length + 2) > room) { misses++; continue; }
+      picked.push(it);
+      used += it.w;
+      misses = 0;
+    }
+    const gap = (room - used) / (picked.length + 1);
+    let u = a + gap;
+    for (const it of picked) {
+      it.draw(u);
+      u += it.w + gap;
+    }
+  }
+}
+
+// neon draws glowing text or strokes in the wall plane.
+function neonText(text, x, y, size, color, z) {
+  ctx.save();
+  ctx.font = `900 ${size}px ${FONT}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 14 * z;
+  ctx.fillStyle = hexShade(color, 1.5);
+  ctx.fillText(text, x, y);
+  ctx.shadowBlur = 4 * z;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+function wallRect(x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, h);
+}
+
+const U = WALL_UNITS;
+const WALL_DECOR = {
+  plain(side, len, wall) {
+    wallRect(0, -12, len * U, 12, wall.trim);
+  },
+
+  // The arcade: dark panelled walls with neon tubes along the top and the
+  // floor, neon signs and pixel-art posters.
+  arcade(side, len, wall, z) {
+    ctx.strokeStyle = shade(wall.color, 0.86);
+    ctx.lineWidth = 2;
+    for (let u = 0.5; u < len; u += 0.5) {
+      ctx.beginPath();
+      ctx.moveTo(u * U, 0);
+      ctx.lineTo(u * U, -wall.h * U);
+      ctx.stroke();
+    }
+    const tube = (y, color) => {
+      ctx.save();
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 12 * z;
+      wallRect(0, y, len * U, 5, hexShade(color, 1.4));
+      ctx.restore();
+    };
+    tube(-wall.h * U + 22, "#ff4fd8");
+    tube(-9, wall.trim);
+    const invader = (color) => (u) => {
+      const art = ["0010000100", "0001001000", "0011111100", "0110110110", "1111111111", "1011111101", "1010000101", "0001101100"];
+      const px = 9, x0 = u * U + 4, y0 = -205;
+      wallRect(u * U, y0 - 8, 98, 92, "#1a1336");
+      ctx.save();
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 8 * z;
+      ctx.fillStyle = color;
+      art.forEach((row, j) => [...row].forEach((c, i) => c === "1" && ctx.fillRect(x0 + i * px, y0 + j * px, px, px)));
+      ctx.restore();
+    };
+    const sign = (text, w, color) => ({ w, draw: (u) => neonText(text, (u + w / 2) * U, -170, 40, color, z) });
+    layoutDecor(side, side === "back"
+      ? [sign("GAME ON", 2.2, "#33d6ff"), { w: 1, draw: invader("#8cff5a") }, sign("1UP", 1.1, "#ffd23f"), { w: 1, draw: invader("#ff4fd8") }]
+      : [sign("PRESS START", 3, "#ff4fd8"), { w: 1, draw: invader("#33d6ff") }, sign("★ ★ ★", 1.6, "#ffd23f")]);
+  },
+
+  // The gym: bright walls with an orange stripe, a mirror wall down the
+  // left for the treadmills to face, and windows and a pep talk at the back.
+  gym(side, len, wall, z) {
+    wallRect(0, -112, len * U, 14, wall.trim);
+    wallRect(0, -12, len * U, 12, shade(wall.trim, 0.8));
+    const mirror = {
+      w: 1.5,
+      draw: (u) => {
+        const x = u * U, y = -228, w = 150, h = 210;
+        wallRect(x - 5, y - 5, w + 10, h + 10, "#c9d2de");
+        const g = ctx.createLinearGradient(x, y, x + w, y + h);
+        g.addColorStop(0, "#e8f6ff");
+        g.addColorStop(1, "#bfe2f7");
+        wallRect(x, y, w, h, g);
+        ctx.fillStyle = "rgb(255 255 255 / 0.6)";
+        poly([[x + 25, y], [x + 60, y], [x + 10, y + 90], [x, y + 90], [x, y + 45]]);
+        poly([[x + 80, y], [x + 92, y], [x + 30, y + 120], [x + 18, y + 120]]);
+      },
+    };
+    const window_ = {
+      w: 1.3,
+      draw: (u) => {
+        const x = u * U, y = -235, w = 130, h = 105;
+        wallRect(x - 6, y - 6, w + 12, h + 12, "#ffffff");
+        const g = ctx.createLinearGradient(0, y, 0, y + h);
+        g.addColorStop(0, "#8fd0ff");
+        g.addColorStop(1, "#d8f0ff");
+        wallRect(x, y, w, h, g);
+        ctx.fillStyle = "#ffffff";
+        oval(x + 32, y + 30, 22, 10); oval(x + 50, y + 26, 18, 12); oval(x + 96, y + 62, 20, 8);
+        wallRect(x + w / 2 - 3, y, 6, h, "#ffffff");
+        wallRect(x, y + h / 2 - 3, w, 6, "#ffffff");
+      },
+    };
+    const pep = (text, w) => ({
+      w,
+      draw: (u) => {
+        ctx.font = `900 42px ${FONT}`;
+        const fit = (w * U) / ctx.measureText(text).width;
+        if (fit < 1) ctx.font = `900 ${Math.floor(42 * fit)}px ${FONT}`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = wall.trim;
+        ctx.fillText(text, (u + w / 2) * U, -180);
+      },
+    });
+    layoutDecor(side, side === "left" ? [mirror] : [pep("YOU GOT THIS", 3), window_, pep("💪", 0.8)]);
+  },
+};
+
 // ---- doors ----
 
 // drawStorefrontDoor draws a door that's part of a skyline building: a
@@ -2541,7 +2941,9 @@ function propGeom(p) {
     angle = Math.atan2(p.dir[1], p.dir[0]);
     x -= p.dir[0] * 0.12;
     y -= p.dir[1] * 0.12;
-  } else if (p.kind === "board") {
+  } else if (p.dir && (p.dir[0] || p.dir[1])) {
+    angle = Math.atan2(p.dir[1], p.dir[0]); // furniture faces into the room
+  } else if (p.kind === "board" || p.kind === "screen") {
     if (p.at[1] === 0) { angle = Math.PI / 2; y -= 0.42; } else if (p.at[0] === 0) { angle = 0; x -= 0.42; }
   }
   return { x, y, angle };
@@ -2564,8 +2966,51 @@ function drawProp(p, gm, z, now) {
       addHit(p, upper);
       break;
     }
-    case "bench":
-      addHit(p, drawSprite(sprite("bench", benchModel(), gm.angle, 0.1, z), sx, sy));
+    case "bench": {
+      const len = Math.max(p.w, p.h);
+      const [key, model] = p.variant === "couch" ? ["couch" + len, couchModel(len)]
+        : p.variant === "beanbag" ? ["beanbag", beanbagModel()]
+        : p.variant === "press" ? ["press", pressModel()]
+        : ["bench", benchModel()];
+      addHit(p, drawSprite(sprite(key, model, gm.angle, 0.1, z), sx, sy));
+      break;
+    }
+    case "cabinet": {
+      const s = drawSprite(sprite("cabinet" + p.variant, cabinetModel(p.variant), gm.angle, 0.1, z), sx, sy);
+      addHit(p, s);
+      // A glow over the cabinet while someone's playing.
+      const t = (now - (state.flashes[p.id] || -1e9)) / 900;
+      const glow = CABINET_COLORS[p.variant] || CABINET_COLORS.pink;
+      ctx.save();
+      ctx.globalAlpha = t < 1 ? 0.55 * (1 - t) + 0.12 : 0.12 + 0.05 * Math.sin(now / 400 + p.at[0]);
+      ctx.fillStyle = glow;
+      ctx.shadowColor = glow;
+      ctx.shadowBlur = 24 * z;
+      oval(sx, s.y0 + 14 * z, 22 * z, 12 * z);
+      ctx.restore();
+      break;
+    }
+    case "vending":
+      addHit(p, drawSprite(sprite("vending", vendingModel(), gm.angle, 0.1, z), sx, sy));
+      break;
+    case "treadmill":
+      drawSprite(sprite("treadmill", treadmillModel(), gm.angle, 0.1, z), sx, sy);
+      break;
+    case "weights":
+      addHit(p, drawSprite(sprite("weights", weightsModel(), gm.angle, 0.1, z), sx, sy));
+      break;
+    case "cooler":
+      addHit(p, drawSprite(sprite("cooler", coolerModel(), gm.angle, 0.1, z), sx, sy));
+      break;
+    case "punchbag": {
+      const t = (now - (state.shakes[p.id] || -1e9)) / 1200;
+      const swing = t < 1 ? Math.sin(t * Math.PI * 5) * 2.2 * (1 - t) : 0;
+      drawModel(punchbagModel(), gm.x, gm.y, 0, gm.angle, 0.1, z, { bag: { dv: swing } });
+      addHit(p, boundsOf(sprite("punchbag", punchbagModel(), gm.angle, 0.1, z), sx, sy)); // at rest, for clicks
+      break;
+    }
+    case "screen":
+      drawWallScreen(p, z, now);
       break;
     case "bush":
       drawSprite(sprite("bush" + p.variant, bushModel(p.variant), gm.angle, 0.1, z), sx, sy);
@@ -2657,6 +3102,48 @@ function drawProp(p, gm, z, now) {
       label(`📌 Board · ${n}${more}`, sx, b.y0 - 8 * z, z, theme(state.room.theme).accent, "#fff");
       break;
     }
+  }
+}
+
+// drawWallScreen draws a big screen mounted on the wall behind prop p,
+// playing an endless game of Pong.
+function drawWallScreen(p, z, now) {
+  const side = p.at[1] === 0 ? "back" : "left";
+  const [a, b] = wallSpan(side, p.at[0], p.at[1], p.w, p.h);
+  wallPlane(side, z);
+  try {
+    const x = (a + 0.12) * U, w = (b - a - 0.24) * U, y = -228, h = 128;
+    wallRect(x - 8, y - 8, w + 16, h + 16, "#0b0918");
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, "#1a1240");
+    g.addColorStop(1, "#0f0b26");
+    wallRect(x, y, w, h, g);
+    const tri = (t) => 1 - Math.abs((((t % 2) + 2) % 2) - 1); // 0 → 1 → 0
+    const T = now / 1000;
+    const bx = x + 14 + tri(T * 0.45) * (w - 34), by = y + 10 + tri(T * 0.71) * (h - 26);
+    const track = (lag) => y + 10 + tri(T * 0.71 - lag) * (h - 26) - 14;
+    ctx.save();
+    ctx.shadowBlur = 10 * z;
+    ctx.shadowColor = "#33d6ff";
+    ctx.fillStyle = "#9feaff";
+    ctx.fillRect(x + 8, Math.max(y + 4, Math.min(y + h - 38, track(0.08))), 6, 34);
+    ctx.shadowColor = "#ff4fd8";
+    ctx.fillStyle = "#ff9be8";
+    ctx.fillRect(x + w - 14, Math.max(y + 4, Math.min(y + h - 38, track(0.12))), 6, 34);
+    ctx.shadowColor = "#ffffff";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(bx, by, 8, 8);
+    ctx.restore();
+    ctx.fillStyle = "rgb(255 255 255 / 0.25)";
+    for (let k = y + 6; k < y + h - 6; k += 16) ctx.fillRect(x + w / 2 - 1.5, k, 3, 8);
+    ctx.font = `900 22px ${FONT}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "rgb(255 255 255 / 0.7)";
+    const rally = Math.floor(T / 4.4);
+    ctx.fillText(`${rally % 7}   ${(rally * 3) % 5}`, x + w / 2, y + 6);
+  } finally {
+    ctx.restore();
   }
 }
 
@@ -2815,6 +3302,25 @@ function handleFx(m) {
     const look = CART_LOOKS[m.variant] || CART_LOOKS.hotdog;
     if (a) a.holding = { emoji: look.emoji, until: now + 30000 };
     if (m.by === state.you) { toast(`${look.emoji} You grabbed ${look.item}!`); questDone("snack"); }
+  } else if (GRABS[p.kind]) {
+    const g = GRABS[p.kind];
+    if (a) a.holding = { emoji: g.emoji, until: now + 30000 };
+    if (m.by === state.you) toast(`${g.emoji} ${g.text}`);
+  } else if (p.kind === "cabinet") {
+    // The cabinet lights up and the score floats up for everyone to see.
+    state.flashes[p.id] = now;
+    const color = CABINET_COLORS[p.variant] || CABINET_COLORS.pink;
+    state.particles.push({ kind: "text", text: `🕹️ ${m.score.toLocaleString()}`, x: gm.x, y: gm.y, h: 52, vx: 0, vh: 14, life: 0, max: 2200, color, size: 15 });
+    for (let i = 0; i < 12; i++) {
+      state.particles.push({
+        kind: "sparkle", x: gm.x + (Math.random() - 0.5) * 0.6, y: gm.y + (Math.random() - 0.5) * 0.6, h: 40 + Math.random() * 10,
+        vx: (Math.random() - 0.5) * 16, vh: 10 + Math.random() * 20, life: -Math.random() * 200, max: 900, color: i % 2 ? color : "#ffffff", size: 2.5 + Math.random() * 2,
+      });
+    }
+    if (m.by === state.you) toast(`🕹️ You scored ${m.score.toLocaleString()}!`);
+  } else if (p.kind === "punchbag") {
+    state.shakes[p.id] = now;
+    state.particles.push({ kind: "text", text: "💥 POW!", x: gm.x, y: gm.y, h: 40, vx: 0, vh: 16, life: 0, max: 1300, color: "#e5484d", size: 15 });
   } else if (p.kind === "hydrant") {
     // A big spray of water arcing out and splashing down.
     for (let i = 0; i < 34; i++) {
@@ -2827,6 +3333,13 @@ function handleFx(m) {
     for (let i = 0; i < 2; i++) state.particles.push({ kind: "ring", x: gm.x, y: gm.y, h: 0.01, vx: 0, vh: 0, life: -i * 300, max: 900, color: "#9fdcff", size: 0 });
   }
 }
+
+// GRABS are props you take something from, which you then carry around.
+const GRABS = {
+  vending: { emoji: "🥤", text: "You grabbed a soda!", tip: ["🥤 Vending machine", "Click to grab a soda"] },
+  cooler: { emoji: "💧", text: "You grabbed some water. Stay hydrated!", tip: ["💧 Water cooler", "Click to grab some water"] },
+  weights: { emoji: "🏋️", text: "You did 10 reps. Feel the burn!", tip: ["🏋️ Dumbbells", "Click to do some reps"] },
+};
 
 const HEADLINES = [
   "Local pigeon elected mayor 🐦",
@@ -3189,6 +3702,14 @@ function drawParticles(z, dt) {
     if (q.kind === "heart") {
       heartPath(px, py, q.size * z);
       ctx.fill();
+    } else if (q.kind === "text") {
+      ctx.font = `900 ${Math.round(q.size * z)}px ${FONT}`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.lineWidth = 4 * z;
+      ctx.strokeStyle = "rgb(20 12 40 / 0.75)";
+      ctx.strokeText(q.text, px, py);
+      ctx.fillText(q.text, px, py);
     } else {
       // Voxel-style: tiny spinning squares (petals spin slower).
       const r = q.size * z * 0.7;
@@ -3277,15 +3798,27 @@ function propUnder(px, py, t) {
   const hits = state.hits || [];
   for (let i = hits.length - 1; i >= 0; i--) if (spriteHit(hits[i], px, py)) return hits[i];
   const p = propAt(t.x, t.y);
-  return p && p.kind !== "lamp" && p.kind !== "manhole" && p.kind !== "bush" ? { id: p.id, kind: p.kind } : null;
+  return p && !DECOR_KINDS.has(p.kind) ? { id: p.id, kind: p.kind } : null;
 }
 
+// DECOR_KINDS are props that are only for looking at (the server ignores
+// using them), so hovering one shows nothing.
+const DECOR_KINDS = new Set(["lamp", "manhole", "bush", "screen", "treadmill"]);
+
 const PROP_TIPS = {
+  cabinet: () => ["🕹️ Arcade cabinet", "Click to play a round"],
+  punchbag: () => ["🥊 Punching bag", "Click to throw a punch"],
+  vending: () => GRABS.vending.tip,
+  cooler: () => GRABS.cooler.tip,
+  weights: () => GRABS.weights.tip,
   fountain: (p) => {
     const n = p?.count || 0;
     return ["⛲ Wishing fountain", "Click to toss a coin and make a wish 🪙", n === 1 ? "1 wish made" : `${n} wishes made`];
   },
-  bench: () => ["🪑 Bench", "Click to sit down. Walk off to stand up."],
+  bench: (p) => [
+    { couch: "🛋️ Couch", beanbag: "🫘 Beanbag", press: "🏋️ Weight bench" }[p?.variant] || "🪑 Bench",
+    "Click to sit down. Walk off to stand up.",
+  ],
   tree: (p) => [p?.variant === "leafy" ? "🌳 Leafy tree" : "🌸 Cherry tree", "Click to give it a shake"],
   bell: () => ["🔔 Hello bell", "Ring it to say hi to everyone here"],
   clock: () => {

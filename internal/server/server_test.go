@@ -344,6 +344,25 @@ func TestFountainFromAcrossThePlaza(t *testing.T) {
 	}
 }
 
+func TestArcadeFurniture(t *testing.T) {
+	url := startServer(t)
+	a := dial(t, url)
+	a.send(map[string]any{"t": "teleport", "room": "gaming"})
+	a.expect("room")
+	// Playing a cabinet walks you over and shows everyone your score.
+	a.send(map[string]any{"t": "use", "prop": "cabinet-2"})
+	fx := a.expect("fx")
+	if score, _ := fx["score"].(float64); fx["kind"] != "cabinet" || score < 100 || score > 9990 {
+		t.Fatalf("want a cabinet score, got %v", fx)
+	}
+	// The screen is only for watching; the vending machine hands out a soda.
+	a.send(map[string]any{"t": "use", "prop": "screen"})
+	a.send(map[string]any{"t": "use", "prop": "vending"})
+	if fx := a.expect("fx"); fx["kind"] != "vending" || fx["variant"] != "soda" {
+		t.Fatalf("want a soda from the vending machine, got %v", fx)
+	}
+}
+
 func TestSitOnBenchAndStandUp(t *testing.T) {
 	url := startServer(t)
 	a, watcher := dial(t, url), dial(t, url)

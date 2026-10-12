@@ -68,7 +68,7 @@ func adjacent(p *world.Prop, pos world.Point) bool {
 func (sv *Server) handleUseLocked(s *session, id string) {
 	r := s.room
 	p := r.def.PropByID(id)
-	if p == nil || p.Kind == world.PropLamp || p.Kind == world.PropBush || p.Flat() {
+	if p == nil || p.Decorative() || p.Flat() {
 		return
 	}
 	if p.Seat() {
@@ -153,9 +153,12 @@ func (sv *Server) useLocked(s *session, p *world.Prop) {
 			return
 		}
 		s.room.lastBell = now
-	case world.PropTree, world.PropHydrant:
-	case world.PropCart:
+	case world.PropTree, world.PropHydrant, world.PropPunchbag:
+	case world.PropCart, world.PropVending, world.PropCooler, world.PropWeights:
 		fx["variant"] = p.Variant // everyone sees what you grabbed
+	case world.PropCabinet:
+		b := randomBytes(2)
+		fx["score"] = (int(b[0])<<8|int(b[1]))%990*10 + 100 // everyone sees how you did
 	default:
 		return
 	}

@@ -67,31 +67,85 @@ func filled(w, h int, c byte) []string {
 	return rows
 }
 
+// arcade is a neon games room: a couch and beanbags on a rug facing a big
+// screen, arcade cabinets round the edge and a vending machine.
 func arcade() *Room {
+	rows := make([]string, 10)
+	for y := range rows {
+		var b strings.Builder
+		for x := range 12 {
+			if x >= 2 && x <= 8 && y >= 1 && y <= 5 {
+				b.WriteByte(',') // the rug in front of the screen
+			} else {
+				b.WriteByte('.') // carpet
+			}
+		}
+		rows[y] = b.String()
+	}
+	seat := func(id, variant string, x, y, w int) Prop {
+		return Prop{ID: id, Kind: PropBench, Variant: variant, At: Point{x, y}, W: w, H: 1, Dir: Point{0, -1}}
+	}
+	cabinet := func(id, color string, x, y, dx, dy int) Prop {
+		return Prop{ID: id, Kind: PropCabinet, Variant: color, At: Point{x, y}, Dir: Point{dx, dy}}
+	}
 	return &Room{
 		Theme: "gaming",
-		Rows:  filled(8, 8, '.'),
+		Rows:  rows,
 		Spawn: Point{3, 4},
 		Doors: []Door{{At: Point{0, 4}}},
-		Props: []Prop{{ID: "board", Kind: PropBoard, At: Point{4, 0}}},
+		Props: []Prop{
+			{ID: "board", Kind: PropBoard, At: Point{0, 7}},
+			{ID: "screen", Kind: PropScreen, At: Point{4, 0}, W: 3, H: 1},
+			seat("couch", "couch", 4, 3, 3),
+			seat("beanbag-a", "beanbag", 2, 2, 1),
+			seat("beanbag-b", "beanbag", 8, 2, 1),
+			cabinet("cabinet-1", "pink", 8, 0, 0, 1),
+			cabinet("cabinet-2", "cyan", 9, 0, 0, 1),
+			cabinet("cabinet-3", "lime", 10, 0, 0, 1),
+			cabinet("cabinet-4", "purple", 11, 3, -1, 0),
+			cabinet("cabinet-5", "orange", 11, 5, -1, 0),
+			cabinet("cabinet-6", "pink", 11, 7, -1, 0),
+			{ID: "vending", Kind: PropVending, Variant: "soda", At: Point{0, 1}, Dir: Point{1, 0}},
+		},
 	}
 }
 
+// gym is a bright hall: treadmills facing a mirror wall, a weights corner
+// on rubber flooring, yoga mats, a punching bag and a water cooler.
 func gym() *Room {
+	rows := make([]string, 10)
+	for y := range rows {
+		var b strings.Builder
+		for x := range 12 {
+			switch {
+			case x >= 8 && y <= 4:
+				b.WriteByte(',') // rubber flooring in the weights corner
+			case (x == 4 || x == 6 || x == 8) && (y == 7 || y == 8):
+				b.WriteByte(':') // yoga mats
+			default:
+				b.WriteByte('.') // wooden floor
+			}
+		}
+		rows[y] = b.String()
+	}
+	treadmill := func(id string, y int) Prop {
+		return Prop{ID: id, Kind: PropTreadmill, At: Point{1, y}, W: 2, H: 1, Dir: Point{-1, 0}}
+	}
 	return &Room{
 		Theme: "gym",
-		Rows: []string{
-			"  .....  ",
-			" ....... ",
-			".........",
-			".........",
-			".........",
-			" ....... ",
-			"  .....  ",
-		},
+		Rows:  rows,
 		Spawn: Point{4, 3},
 		Doors: []Door{{At: Point{3, 0}}},
-		Props: []Prop{{ID: "board", Kind: PropBoard, At: Point{6, 0}}},
+		Props: []Prop{
+			{ID: "board", Kind: PropBoard, At: Point{0, 8}},
+			treadmill("treadmill-1", 2), treadmill("treadmill-2", 4), treadmill("treadmill-3", 6),
+			{ID: "weights", Kind: PropWeights, Variant: "dumbbells", At: Point{9, 0}, W: 2, H: 1, Dir: Point{0, 1}},
+			{ID: "press", Kind: PropBench, Variant: "press", At: Point{9, 3}, W: 2, H: 1, Dir: Point{0, 1}},
+			{ID: "punchbag", Kind: PropPunchbag, At: Point{10, 7}},
+			{ID: "cooler", Kind: PropCooler, Variant: "water", At: Point{11, 1}, Dir: Point{-1, 0}},
+			{ID: "plant-a", Kind: PropBush, At: Point{0, 9}},
+			{ID: "plant-b", Kind: PropBush, Variant: "flowers", At: Point{11, 9}},
+		},
 	}
 }
 

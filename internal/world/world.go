@@ -55,7 +55,26 @@ const (
 	PropNewsbox  = "newsbox"  // read a headline
 	PropSubway   = "subway"   // a subway entrance: ride to another room
 	PropManhole  = "manhole"  // steams; you can walk over it
+
+	// Furniture for community rooms (Gaming's arcade, the Gym).
+	PropCabinet   = "cabinet"   // an arcade cabinet (Variant: its colour); play a round
+	PropScreen    = "screen"    // a big screen on the back wall; decoration
+	PropVending   = "vending"   // a vending machine; grab a soda
+	PropTreadmill = "treadmill" // decoration
+	PropWeights   = "weights"   // a dumbbell rack; do some reps
+	PropPunchbag  = "punchbag"  // throw a punch
+	PropCooler    = "cooler"    // a water cooler; grab some water
 )
+
+// Decorative reports whether a prop is only for looking at: using it does
+// nothing, so nobody walks over to it.
+func (p *Prop) Decorative() bool {
+	switch p.Kind {
+	case PropLamp, PropBush, PropScreen, PropTreadmill:
+		return true
+	}
+	return false
+}
 
 // Prop is an object in a room. It covers W×H tiles from At.
 type Prop struct {
@@ -64,7 +83,7 @@ type Prop struct {
 	Variant string // e.g. which food a cart sells
 	At      Point
 	W, H    int
-	Dir     Point // benches: the way a sitter faces; carts: the way they face
+	Dir     Point // benches: the way a sitter faces; carts and furniture: the way they face
 }
 
 func (p *Prop) size() (int, int) { return max(p.W, 1), max(p.H, 1) }
