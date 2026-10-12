@@ -542,6 +542,74 @@ When the creator revenue share switches on (§8, item 6):
 - [ ] Company entity and insurance in place
 - [ ] Pilot with 2–3 trusted communities before opening to all adult owners
 
+### 2.6 Blocks: communities anyone can start
+
+Gaming and Gym are the first of many **blocks**: a community for an
+interest, like a subreddit, except it's a place you walk into. Every block
+has its own room, its own board (the subreddit-style feed, kept forever),
+its own look, and eventually its own mods.
+
+**Naming.** In the interface they're "blocks" ("the Gaming block", "Start a
+block"). The short form and links use **h/** for Habit: `h/gaming`,
+`habit.com/h/gaming`. We avoid "b/" on purpose: it reads as 4chan's /b/.
+
+**How it works (built)**
+- A block is a saved record: short name (slug), name, bullet emoji, colour,
+  description, the room template it started from, and its owner. Gaming
+  and Gym are official blocks, created at startup.
+- Rooms load on demand: a block's room is built from its template on the
+  first visit and unloaded two minutes after the last person leaves (chat
+  and posts are in the database), so thousands of blocks cost nothing while
+  empty.
+- Templates: Lounge, Park, Arcade (like Gaming), Gym. Each has a board on
+  the back wall and a door out to the Plaza (official blocks with a
+  storefront let you out at their shop; others come up out of the subway).
+- The subway map is the directory: the Plaza first, then blocks, busiest
+  first, with a search and "Start a block". `/h/slug` links open straight
+  into a block, and the address bar follows you, so links can be shared.
+- **Getting in is by subway first.** Blocks never get a door in the Plaza
+  (decided 2026-10-12). Every block is a stop on the subway map.
+- **Storefronts in town (optional).** Beyond the Plaza are the town's
+  avenues (1st, 2nd and 3rd Avenue), reached through street-sign gateways
+  in the Plaza's skyline or by subway. Each avenue has six shop lots; empty
+  ones show "FOR LEASE". A block's owner clicks one and picks their block:
+  it becomes a storefront in the block's colour with its name in neon, and
+  a door that leads straight in. Stepping out of the block puts you back on
+  the avenue in front of the shop. Choosing another lot moves it; one lot
+  per block, one block per lot. More avenues can be added as lots fill
+  (they're defined in `world/avenues.go`).
+- Starting one: **anyone with an account** (decided 2026-10-11), up to three
+  a day. Short names are 3–21 lowercase letters, numbers or underscores;
+  site words are reserved and names that look official are refused. Teens'
+  names and descriptions go through the personal-info filter.
+
+**Next phases**
+1. **Mods.** The owner appoints mods. Board tools: remove posts, lock and
+   pin threads, ban someone from the block, a mod log. Site admins can
+   always step in.
+2. **Decorate mode.** Mods change the room in place: floor style and
+   colours from presets, place/move/turn furniture from a catalog (with a
+   per-room cap), banner, welcome line, rules, pinned posts. Later,
+   community-made furniture via §2.5.
+3. **Discovery.** Categories and tags, trending blocks, joining a block
+   (your blocks first on the map, its meetups in your notifications), and
+   the Plaza's storefronts rotating to show the busiest blocks.
+4. **Upkeep.** Blocks whose mods vanish for 60 days go dormant and can be
+   adopted (and their storefront lot freed); squatted brand names can be
+   reclaimed on request.
+5. **Town growth.** Open new avenues automatically as lots run out, and
+   decide whether prime lots (near the Plaza) should be earned, e.g. by
+   activity, rather than first come, first served.
+
+**Risks to manage** (open creation makes these real)
+- Moderation load: every block is a new space to watch. Mod tools (phase 1)
+  and reporting must land before any public launch.
+- Names: a proper word filter (slurs, sexual terms) is still needed; today
+  only reserved and official-looking names are blocked.
+- Teens can start and run blocks. Teen-run blocks may need lighter powers
+  or adult co-mods; decide before launch (§6.1).
+- Brand and trademark squatting: keep a takedown path (§7).
+
 ---
 
 ## 3. The MVP: "Walk in. Say hi." (weeks 0–12)
@@ -684,7 +752,8 @@ shippable in ~12 weeks.)*
 ## 4. Gamification design (making it fun without making it toxic)
 
 **Earning loops**
-1. *Show up*: daily login streak gives Pips (capped).
+1. *Show up*: days visited give Pips (capped). It's a running count, never a
+   streak that resets, so missing a day costs nothing (see §4.1).
 2. *Contribute*: a post that receives upvotes from N **distinct, aged**
    accounts after 24h earns Pips. Delayed and diminishing, so farming is hard.
 3. *Participate*: events, quests and mini-games give XP and event-exclusive furni.
@@ -701,6 +770,67 @@ shippable in ~12 weeks.)*
   but don't affect public reputation.
 - Daily earning caps; per-Board anti-brigading (votes from accounts with no
   history on that Board are down-weighted).
+
+
+### 4.1 Retention: the place people want to come back to
+
+The goal is a habit people are glad to have. The stickiest thing in a
+chatroom is other people, so most of this is about making sure people meet,
+with rituals, progress and small surprises on top. Habit lets teenagers
+in, and "addictive design" for minors is now regulated (UK Children's Code,
+EU DSA, New York's SAFE for Kids Act, California SB 976), so the
+guardrails below are part of the plan, not an afterthought.
+
+**1. The first five minutes: nobody leaves without someone saying hi.**
+- *Greeter nudges*: when a newcomer walks in, a couple of people nearby get
+  a gentle "Someone new just arrived, say hi?" Whoever greets them first
+  earns a Welcomer count (later a badge).
+- *Never a ghost town*: when it's quiet, the subway map and doors point
+  everyone to the busiest room, and empty rooms say so before you go in.
+- *A first thing to do*: a short starter quest (grab a snack, make a wish,
+  say hi) so even quiet visitors do something with others around.
+
+**2. A reason to come back today.**
+- Daily rituals at fixed times: the bell rings for an evening meetup, a
+  cart special of the day, a daily question pinned on the kiosk board.
+- Shared goals: "500 wishes in the fountain today means fireworks at
+  sunset." Everyone helps, everyone sees the payoff.
+- "What you missed" on return: replies to you, hot posts, friends who were
+  around.
+- The newsbox headlines come from the day's real top board posts.
+
+**3. Identity and progress, earned by being social.**
+- Days-visited counts that never reset unlock cosmetics (a hat at 30 days).
+- Collections: every cart tried, the bell rung ten times, the golden pigeon
+  found. Shown on your profile.
+- Room regulars: "Gym regular" on your name tag, earned by time and replies.
+- Cosmetics are the reward currency, feeding into §2.5.
+
+**4. Friends: the real engine.**
+- Follow/friend, "Sam just walked into Gaming", one click to join them.
+- Sitting together on benches; later small group spaces.
+- Your own room to decorate and invite people into (Habbo's core loop).
+
+**5. Small surprises, kept harmless.**
+- A rare golden coin from the fountain, a pigeon that drops a cosmetic.
+- Surprises are free and cosmetic only. Nothing random is ever sold.
+
+**Guardrails** (the age bands in the code switch these on per group)
+- Under 18: no notifications at night, no public follower counts.
+- Everyone: no streaks that reset, no infinite feeds, nothing paid and random.
+- After long late-night sessions, a soft "It's late, the plaza will be here
+  tomorrow 🌙".
+
+**Build order**
+1. Greeter nudges, gathering people when it's quiet, the starter quest. *(built)*
+2. Daily question, shared fountain goal, bell meetup, "what you missed". *(built)*
+3. Friends with join-me; room regular badges.
+4. Days-visited hats, collections, harmless surprises.
+5. Personal rooms.
+
+**Measure** (adds to §9): the share of newcomers who get a reply within five
+minutes is the number to push on; then D1/D7/D30 and the share of people
+with at least one friend.
 
 ---
 
@@ -1049,6 +1179,8 @@ are under 18.
   first message (targets in §3.5). Time to first message is the number
   everyone on the team should know.
 - **Retention**: D1 / D7 / D30 of people who chatted; favourited rooms per user.
+- **Welcome rate**: share of newcomers who get a reply or greeting within
+  five minutes of arriving (§4.1). The leading indicator for retention.
 - **Health**: reports per 1k posts, time to action on reports, % of content
   actioned automatically vs. by humans, repeat-offender rate.
 - **Economy**: Pips inflation (earned vs. sunk), Gem conversion rate,

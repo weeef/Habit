@@ -146,6 +146,8 @@ func (sv *Server) useLocked(s *session, p *world.Prop) {
 	case world.PropFountain:
 		s.room.uses[p.ID]++
 		fx["count"] = s.room.uses[p.ID]
+		sv.wishedLocked()
+		fx["today"], fx["goal"] = sv.today.wishes, wishGoal
 	case world.PropBell:
 		if now.Sub(s.room.lastBell) < bellQuiet {
 			return

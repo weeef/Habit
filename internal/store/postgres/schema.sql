@@ -15,6 +15,8 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS style_skin      smallint NOT NULL 
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS style_hair      smallint NOT NULL DEFAULT 0;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS style_outfit    smallint NOT NULL DEFAULT 0;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS style_accessory smallint NOT NULL DEFAULT 0;
+-- Newcomers this account was first to greet (PLAN.md §4.1).
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS welcomes integer NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS sessions (
     token_hash bytea PRIMARY KEY,
@@ -84,3 +86,28 @@ CREATE TABLE IF NOT EXISTS settings (
     key   text PRIMARY KEY,
     value bytea NOT NULL
 );
+
+-- Small named numbers that outlive a restart, like the day's wishes.
+CREATE TABLE IF NOT EXISTS counters (
+    key   text PRIMARY KEY,
+    value bigint NOT NULL
+);
+
+-- Blocks: communities anyone can start, each a room with a board (PLAN.md §2.6).
+CREATE TABLE IF NOT EXISTS blocks (
+    slug       text PRIMARY KEY,
+    name       text NOT NULL,
+    bullet     text NOT NULL,
+    color      text NOT NULL,
+    about      text NOT NULL,
+    template   text NOT NULL,
+    owner_id   text REFERENCES accounts (id) ON DELETE SET NULL,
+    official   boolean NOT NULL DEFAULT false,
+    created_at timestamptz NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS blocks_slug_lower ON blocks (lower(slug));
+CREATE INDEX IF NOT EXISTS blocks_owner ON blocks (owner_id, created_at);
+-- A block's storefront on one of the town's avenues; one block per lot.
+ALTER TABLE blocks ADD COLUMN IF NOT EXISTS street text NOT NULL DEFAULT '';
+ALTER TABLE blocks ADD COLUMN IF NOT EXISTS lot    integer NOT NULL DEFAULT 0;
+CREATE UNIQUE INDEX IF NOT EXISTS blocks_lot ON blocks (street, lot) WHERE lot <> 0;

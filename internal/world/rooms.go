@@ -6,52 +6,11 @@ import "strings"
 // communities, Gaming and Gym. Doors sit on the back walls (x = 0 or y = 0),
 // Habbo-style.
 func DefaultRooms() []*Room {
-	return []*Room{
+	return append([]*Room{
 		plaza(),
-		{
-			ID:    "gaming",
-			Name:  "🎮 Gaming",
-			Kind:  KindCommunity,
-			Theme: "gaming",
-			Rows: []string{
-				"........",
-				"........",
-				"........",
-				"........",
-				"........",
-				"........",
-				"........",
-				"........",
-			},
-			Spawn: Point{3, 4},
-			Doors: []Door{
-				{At: Point{0, 4}, Target: "plaza", TargetAt: Point{1, 10}, Label: "The Plaza"},
-			},
-			Props:    []Prop{{ID: "board", Kind: PropBoard, At: Point{4, 0}}},
-			Capacity: 50,
-		},
-		{
-			ID:    "gym",
-			Name:  "🏋️ Gym",
-			Kind:  KindCommunity,
-			Theme: "gym",
-			Rows: []string{
-				"  .....  ",
-				" ....... ",
-				".........",
-				".........",
-				".........",
-				" ....... ",
-				"  .....  ",
-			},
-			Spawn: Point{4, 3},
-			Doors: []Door{
-				{At: Point{3, 0}, Target: "plaza", TargetAt: Point{10, 1}, Label: "The Plaza"},
-			},
-			Props:    []Prop{{ID: "board", Kind: PropBoard, At: Point{6, 0}}},
-			Capacity: 50,
-		},
-	}
+		BlockRoom("gaming", "🎮 Gaming", "arcade"),
+		BlockRoom("gym", "🏋️ Gym", "gym"),
+	}, Avenues()...)
 }
 
 // plaza is the city square everyone arrives in, NYC style, big enough for
@@ -91,10 +50,10 @@ func plaza() *Room {
 		Theme: "plaza",
 		Rows:  rows,
 		Spawn: Point{15, 30},
-		Doors: []Door{
+		Doors: append([]Door{
 			{At: Point{0, 10}, Target: "gaming", TargetAt: Point{3, 4}, Label: "🎮 Gaming"},
 			{At: Point{10, 0}, Target: "gym", TargetAt: Point{4, 3}, Label: "🏋️ Gym"},
-		},
+		}, avenueGates()...),
 		Props: []Prop{
 			// The middle: the fountain, benches facing it, lamps, and the board.
 			{ID: "fountain", Kind: PropFountain, At: Point{15, 15}, W: 2, H: 2},

@@ -54,14 +54,20 @@ type Server struct {
 	rooms      map[string]*room
 	order      []string
 	lastCounts string
+	newcomers  int // since start, for the welcome rate (PLAN.md §9)
+	welcomed   int
+	today      today // the daily rhythm (daily.go)
 }
 
 type room struct {
-	def      *world.Room
-	sessions map[*session]struct{}
-	history  []chatMsg
-	uses     map[string]int // per prop, e.g. wishes in the fountain (since start)
-	lastBell time.Time
+	def        *world.Room
+	block      *store.Block // the block this room belongs to; nil for the Plaza
+	pinned     bool         // part of the starting world, never unloaded
+	emptySince time.Time    // when the last person left
+	sessions   map[*session]struct{}
+	history    []chatMsg
+	uses       map[string]int // per prop, e.g. wishes in the fountain (since start)
+	lastBell   time.Time
 }
 
 type session struct {
@@ -88,6 +94,10 @@ type session struct {
 	viewing    int64  // board thread open in the client, for live replies
 	seat       string // bench prop they're sitting on
 	pendingUse string // prop to use when they finish walking
+
+	joinedAt     time.Time // when they connected
+	lastNudge    time.Time // last time they were asked to greet someone
+	welcomeUntil time.Time // a newcomer nobody has greeted yet, until then
 }
 
 func (s *session) close() { s.stop.Do(func() { close(s.done) }) }
@@ -128,12 +138,16 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		if err != nil {
 			return nil, fmt.Errorf("loading %s history: %w", def.ID, err)
 		}
-		r := &room{def: def, sessions: map[*session]struct{}{}, uses: map[string]int{}}
-		for _, m := range saved {
-			r.history = append(r.history, chatMsg{From: m.AvatarID, Name: m.Name, Text: m.Text, TS: m.SentAt, Newbie: m.Newbie})
-		}
+		r := newRoom(def, saved)
+		r.pinned = true
 		sv.rooms[def.ID] = r
 		sv.order = append(sv.order, def.ID)
+	}
+	if err := sv.seedBlocks(ctx); err != nil {
+		return nil, fmt.Errorf("starting blocks: %w", err)
+	}
+	if err := sv.openStorefronts(ctx); err != nil {
+		return nil, fmt.Errorf("opening storefronts: %w", err)
 	}
 	return sv, nil
 }
@@ -144,12 +158,18 @@ func (sv *Server) Handler() http.Handler {
 	mux.HandleFunc("/ws", sv.serveWS)
 	if sv.opts.Static != nil {
 		mux.Handle("/", http.FileServerFS(sv.opts.Static))
+		// Block links, like /h/gaming, open the same page; it then joins
+		// that block.
+		mux.HandleFunc("/h/", func(w http.ResponseWriter, r *http.Request) {
+			http.ServeFileFS(w, r, sv.opts.Static, "index.html")
+		})
 	}
 	return mux
 }
 
 // Run advances avatar movement until ctx is cancelled.
 func (sv *Server) Run(ctx context.Context) {
+	go sv.runDaily(ctx)
 	t := time.NewTicker(sv.opts.Tick)
 	defer t.Stop()
 	last := sv.opts.Now()
@@ -186,6 +206,12 @@ type inMsg struct {
 	Sort      string       `json:"sort"`
 	Value     int          `json:"value"`
 	Style     *store.Style `json:"style"`
+	Q         string       `json:"q"`     // a block directory search
+	Block     *blockForm   `json:"block"` // a new block
+	Slug      string       `json:"slug"`  // a block, for its storefront
+	Street    string       `json:"street"`
+	Lot       int          `json:"lot"`
+	Since     int64        `json:"since"` // ms since 1970, for "what you missed"
 }
 
 type avatarView struct {
@@ -211,23 +237,28 @@ type doorView struct {
 	Pos    world.Point `json:"pos"`
 	Target string      `json:"target"`
 	Label  string      `json:"label"`
+	Color  string      `json:"color,omitempty"`
 }
 
 type roomView struct {
-	ID    string     `json:"id"`
-	Name  string     `json:"name"`
-	Kind  world.Kind `json:"kind"`
-	Theme string     `json:"theme"`
-	Rows  []string   `json:"rows"`
-	Doors []doorView `json:"doors"`
-	Props []propView `json:"props"`
+	ID    string        `json:"id"`
+	Name  string        `json:"name"`
+	Kind  world.Kind    `json:"kind"`
+	Theme string        `json:"theme"`
+	Rows  []string      `json:"rows"`
+	Doors []doorView    `json:"doors"`
+	Props []propView    `json:"props"`
+	Block *blockView    `json:"block,omitempty"`
+	Lots  []world.Point `json:"lots,omitempty"` // avenues: shop lots, empty unless a door is on them
 }
 
 type roomSummary struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Kind  string `json:"kind"`
-	Count int    `json:"count"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Kind   string `json:"kind"`
+	Count  int    `json:"count"`
+	Bullet string `json:"bullet,omitempty"`
+	Color  string `json:"color,omitempty"`
 }
 
 // ---- connection lifecycle ----
@@ -253,10 +284,25 @@ func (sv *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 	}
 	go sv.writeLoop(ctx, conn, s)
 
+	// A link like /h/knitting opens straight into that block.
+	var start *room
+	if slug := r.URL.Query().Get("room"); slug != "" {
+		if start, err = sv.roomFor(ctx, slug); err != nil {
+			log.Printf("load h/%s: %v", slug, err)
+		}
+	}
+
 	sv.mu.Lock()
 	plaza := sv.rooms[sv.order[0]]
+	if start != nil && sv.rooms[start.def.ID] == start {
+		plaza = start
+	}
 	sv.enqueue(s, map[string]any{"t": "welcome", "rooms": sv.summariesLocked()})
-	sv.enterLocked(s, plaza, plaza.def.Spawn)
+	sv.enterLocked(s, plaza, sv.arrivalSpotLocked(plaza))
+	if sv.today.day != "" {
+		sv.enqueue(s, map[string]any{"t": "today", "today": sv.todayViewLocked()})
+	}
+	sv.newcomerLocked(s)
 	sv.mu.Unlock()
 
 	defer func() {
@@ -319,6 +365,9 @@ func (sv *Server) enqueue(s *session, v any) {
 }
 
 func (sv *Server) broadcastLocked(r *room, v any, except *session) {
+	if r == nil {
+		return // a block room nobody's in
+	}
 	for s := range r.sessions {
 		if s != except {
 			sv.enqueue(s, v)
@@ -376,9 +425,33 @@ func (sv *Server) handle(ctx context.Context, s *session, m inMsg) {
 	case "notes_read":
 		sv.handleNotesRead(ctx, s)
 		return
+	case "missed":
+		sv.handleMissed(ctx, s, time.UnixMilli(m.Since))
+		return
+	case "teleport":
+		sv.goTo(ctx, s, m.Room)
+		return
+	case "blocks":
+		sv.handleBlocks(ctx, s, m.Q)
+		return
+	case "create_block":
+		sv.handleCreateBlock(ctx, s, m.Block)
+		return
+	case "my_blocks":
+		sv.handleMyBlocks(ctx, s)
+		return
+	case "claim_lot":
+		sv.handleClaimLot(ctx, s, m.Slug, m.Street, m.Lot)
+		return
+	case "close_lot":
+		sv.handleClaimLot(ctx, s, m.Slug, "", 0)
+		return
 	case "chat":
 		sv.mu.Lock()
 		saved, ok := sv.chatLocked(s, m.Text)
+		if ok {
+			sv.greetedLocked(s)
+		}
 		sv.mu.Unlock()
 		if ok {
 			if err := sv.store.AddMessage(ctx, saved); err != nil {
@@ -401,15 +474,14 @@ func (sv *Server) handle(ctx context.Context, s *session, m inMsg) {
 	case "emote":
 		if allowedEmotes[m.Emote] {
 			sv.broadcastLocked(s.room, map[string]any{"t": "emote", "id": s.pubID, "emote": m.Emote}, nil)
+			if m.Emote == "wave" {
+				sv.greetedLocked(s)
+			}
 		}
 	case "named":
 		if s.acct != nil {
 			s.named = m.On
 			sv.broadcastLocked(s.room, map[string]any{"t": "update", "avatar": sv.viewLocked(s)}, nil)
-		}
-	case "teleport":
-		if r, ok := sv.rooms[m.Room]; ok && r != s.room {
-			sv.moveLocked(s, r, r.def.Spawn)
 		}
 	case "peek":
 		if r, ok := sv.rooms[m.Room]; ok {
@@ -431,7 +503,7 @@ func (sv *Server) finishAuth(s *session, acct *store.Account, token, recovery st
 	sv.enqueue(s, map[string]any{
 		"t": "authed", "username": acct.Username, "token": token,
 		"recoveryCode": recovery, "ageBand": ageBand(acct.BirthYear, sv.opts.Now()),
-		"style": acct.Style,
+		"style": acct.Style, "welcomes": acct.Welcomes,
 	})
 	if s.room != nil {
 		// Their anonymous tag changes from "Visitor" to "Anonymous", and
@@ -586,6 +658,14 @@ func (sv *Server) tick(dt time.Duration) {
 	}
 	for _, t := range transfers {
 		target := sv.rooms[t.door.Target]
+		if target == nil {
+			// A storefront into a block nobody's in: step back onto the
+			// sidewalk while its room loads, then go in.
+			t.s.pos = t.back
+			sv.broadcastLocked(t.s.room, map[string]any{"t": "path", "id": t.s.pubID, "from": t.back, "path": []world.Point{}, "stepMs": 0}, nil)
+			go sv.goTo(context.Background(), t.s, t.door.Target)
+			continue
+		}
 		if len(target.sessions) >= target.def.Capacity {
 			// Full: step back off the door instead of going through.
 			t.s.pos = t.back
@@ -593,7 +673,11 @@ func (sv *Server) tick(dt time.Duration) {
 			sv.enqueue(t.s, map[string]any{"t": "notice", "message": target.def.Name + " is full right now. Try again in a moment."})
 			continue
 		}
-		sv.moveLocked(t.s, target, t.door.TargetAt)
+		at := t.door.TargetAt
+		if at == world.AtSpawn {
+			at = target.def.Spawn
+		}
+		sv.moveLocked(t.s, target, at)
 	}
 	sv.broadcastCountsLocked()
 }
@@ -601,6 +685,9 @@ func (sv *Server) tick(dt time.Duration) {
 func (sv *Server) moveLocked(s *session, to *room, at world.Point) {
 	sv.leaveLocked(s)
 	sv.enterLocked(s, to, at)
+	if s.awaitingWelcome(sv.opts.Now()) {
+		sv.nudgeForLocked(s)
+	}
 	sv.broadcastCountsLocked()
 }
 
@@ -621,15 +708,11 @@ func (sv *Server) enterLocked(s *session, r *room, at world.Point) {
 		v.You = o == s
 		avatars = append(avatars, v)
 	}
-	doors := make([]doorView, len(r.def.Doors))
-	for i, d := range r.def.Doors {
-		doors[i] = doorView{Pos: d.At, Target: d.Target, Label: d.Label}
-	}
 	sv.enqueue(s, map[string]any{
 		"t": "room",
 		"room": roomView{
-			ID: r.def.ID, Name: r.def.Name, Kind: r.def.Kind, Theme: r.def.Theme, Rows: r.def.Rows, Doors: doors,
-			Props: r.propViews(),
+			ID: r.def.ID, Name: r.def.Name, Kind: r.def.Kind, Theme: r.def.Theme, Rows: r.def.Rows, Doors: doorViews(r), Lots: r.def.Lots,
+			Props: r.propViews(), Block: sv.blockViewLocked(r, s),
 		},
 		"you":     s.pubID,
 		"avatars": avatars,
@@ -658,6 +741,25 @@ func (sv *Server) freeTileNearLocked(r *room, p world.Point) world.Point {
 	return p
 }
 
+func doorViews(r *room) []doorView {
+	out := make([]doorView, len(r.def.Doors))
+	for i, d := range r.def.Doors {
+		out[i] = doorView{Pos: d.At, Target: d.Target, Label: d.Label, Color: d.Color}
+	}
+	return out
+}
+
+// blockViewLocked describes r's block for someone in it, or nil.
+func (sv *Server) blockViewLocked(r *room, s *session) *blockView {
+	if r.block == nil {
+		return nil
+	}
+	v := viewOfBlock(r.block)
+	v.Count = len(r.sessions)
+	v.Yours = s.acct != nil && r.block.OwnerID == s.acct.ID
+	return &v
+}
+
 // nonNil makes an empty history encode as [] rather than null, which clients
 // would have to special-case.
 func nonNil(h []chatMsg) []chatMsg {
@@ -680,6 +782,9 @@ func (sv *Server) leaveLocked(s *session) {
 		return
 	}
 	delete(s.room.sessions, s)
+	if len(s.room.sessions) == 0 {
+		s.room.emptySince = sv.opts.Now()
+	}
 	sv.broadcastLocked(s.room, map[string]any{"t": "leave", "id": s.pubID}, nil)
 	s.room = nil
 }
@@ -706,7 +811,11 @@ func (sv *Server) summariesLocked() []roomSummary {
 	out := make([]roomSummary, 0, len(sv.order))
 	for _, id := range sv.order {
 		r := sv.rooms[id]
-		out = append(out, roomSummary{ID: id, Name: r.def.Name, Kind: string(r.def.Kind), Count: len(r.sessions)})
+		rs := roomSummary{ID: id, Name: r.def.Name, Kind: string(r.def.Kind), Count: len(r.sessions)}
+		if r.block != nil {
+			rs.Bullet, rs.Color = r.block.Bullet, r.block.Color
+		}
+		out = append(out, rs)
 	}
 	return out
 }

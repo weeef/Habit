@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // Plaza days run on New York time, even on servers without zone files
 
 	"habit/internal/server"
 	"habit/internal/store"

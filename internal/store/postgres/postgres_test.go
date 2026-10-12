@@ -22,7 +22,7 @@ func TestPostgres(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := s.pool.Exec(ctx, `TRUNCATE accounts, sessions, messages, threads, replies, notifications, thread_votes, settings`); err != nil {
+		if _, err := s.pool.Exec(ctx, `TRUNCATE accounts, sessions, messages, threads, replies, notifications, thread_votes, settings, counters, blocks`); err != nil {
 			t.Fatal(err)
 		}
 		return s

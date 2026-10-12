@@ -6,9 +6,9 @@
   <title>Habit</title>
   <meta name="description" content="Walk in. Say hi. Chatrooms you can actually walk into.">
   <meta name="theme-color" content="#1d1b2e">
-  <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <main class="layout">
@@ -40,6 +40,51 @@
         <button type="button" id="accountBtn" class="sign-chip">Sign up</button>
       </div>
     </header>
+
+    <div class="left-stack">
+      <!-- First stops: a short starter quest for newcomers. -->
+      <section class="quest sign" id="quest" hidden aria-labelledby="questTitle">
+        <div class="quest-head">
+          <h2 id="questTitle">Your first stops</h2>
+          <button type="button" class="quest-close" id="questClose" aria-label="Hide the first stops">✕</button>
+        </div>
+        <ol class="quest-steps" id="questSteps"></ol>
+      </section>
+
+      <!-- Today in the Plaza: the daily question, the fountain, the meetup. -->
+      <section class="today sign" id="today" hidden>
+        <button type="button" class="today-head" id="todayToggle" aria-expanded="true" aria-controls="todayBody">
+          <span class="today-title">Today in the Plaza</span>
+          <span class="today-mini" id="todayMini"></span>
+          <span class="today-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="today-body" id="todayBody">
+          <div class="missed" id="missed" hidden>
+            <div class="missed-head">
+              <b id="missedTitle">While you were away</b>
+              <button type="button" class="quest-close" id="missedClose" aria-label="Dismiss">✕</button>
+            </div>
+            <ul class="missed-list" id="missedList"></ul>
+          </div>
+          <button type="button" class="today-row" id="todayQuestion">
+            <span class="today-icon" aria-hidden="true">💬</span>
+            <span class="today-label">Question of the day</span>
+            <span class="today-text" id="todayQuestionText"></span>
+          </button>
+          <button type="button" class="today-row" id="todayWishes">
+            <span class="today-icon" aria-hidden="true">⛲</span>
+            <span class="today-label">Fill the fountain</span>
+            <span class="today-bar" aria-hidden="true"><i id="todayBar"></i></span>
+            <span class="today-text" id="todayWishText"></span>
+          </button>
+          <button type="button" class="today-row" id="todayMeetup">
+            <span class="today-icon" aria-hidden="true">🔔</span>
+            <span class="today-label">Evening meetup</span>
+            <span class="today-text" id="todayMeetupText"></span>
+          </button>
+        </div>
+      </section>
+    </div>
 
     <aside class="side" id="side">
       <section class="panel chat sign">
@@ -155,15 +200,56 @@
     </div>
   </dialog>
 
-  <dialog id="subwayDialog" aria-labelledby="subwayTitle">
+  <dialog id="subwayDialog" class="subway-dialog" aria-labelledby="subwayTitle">
     <div class="auth">
       <h2 id="subwayTitle">🚇 Where to?</h2>
-      <p class="muted">Pick a stop. Trains run every second.</p>
+      <p class="muted">Every block is a stop: a room for an interest, with its own board. Pick one, or start your own.</p>
+      <div class="subway-search">
+        <input id="blockSearch" type="search" placeholder="Search blocks…" aria-label="Search blocks" maxlength="30" autocomplete="off">
+        <button type="button" id="newBlockBtn">Start a block</button>
+      </div>
       <ol class="subway-lines" id="subwayLines"></ol>
       <div class="row">
         <button type="button" class="ghost" id="subwayClose">Stay here</button>
       </div>
     </div>
+  </dialog>
+
+  <dialog id="leaseDialog" aria-labelledby="leaseTitle">
+    <div class="auth">
+      <h2 id="leaseTitle">🏪 For lease</h2>
+      <p class="muted" id="leaseWhere"></p>
+      <ol class="subway-lines" id="leaseBlocks"></ol>
+      <p class="error" id="leaseError" role="alert"></p>
+      <div class="row">
+        <button type="button" class="ghost" id="leaseClose">Not now</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="blockDialog" aria-labelledby="blockTitle">
+    <form id="blockForm" class="auth" autocomplete="off">
+      <h2 id="blockTitle">Start a block</h2>
+      <p class="muted">A block is a room for an interest, with its own board that keeps every post. Anyone can drop in.</p>
+      <div class="block-preview" aria-hidden="true">
+        <span class="line" id="blockPreviewBullet">🧶</span>
+        <span><b id="blockPreviewName">Your block</b><br><span class="muted" id="blockPreviewSlug">h/…</span></span>
+      </div>
+      <label>Name <input name="name" required maxlength="30" placeholder="Knit &amp; Chill"></label>
+      <label>Short name, for its link
+        <span class="slug-field"><span aria-hidden="true">h/</span><input name="slug" required pattern="[a-z0-9_]{3,21}" maxlength="21" placeholder="knitting" aria-label="Short name"></span>
+      </label>
+      <label>What's it about? <textarea name="about" maxlength="200" rows="2" placeholder="Patterns, projects and yarn talk."></textarea></label>
+      <fieldset class="picker"><legend>Icon</legend><div class="pick-grid" id="bulletPicker" role="radiogroup" aria-label="Icon"></div></fieldset>
+      <fieldset class="picker"><legend>Colour</legend><div class="pick-grid" id="colorPicker" role="radiogroup" aria-label="Colour"></div></fieldset>
+      <fieldset class="picker"><legend>Room</legend><div class="template-grid" id="templatePicker" role="radiogroup" aria-label="Room"></div></fieldset>
+      <p class="muted small-print">People reach your block by subway. Want a storefront in town too? Walk to a "For lease" shop on any avenue and claim it.</p>
+      <p class="error" id="blockError" role="alert"></p>
+      <div class="row">
+        <button type="button" class="ghost" id="blockCancel">Cancel</button>
+        <button type="submit" id="blockSubmit">Start it</button>
+      </div>
+    </form>
   </dialog>
 
   <dialog id="threadDialog">
@@ -191,6 +277,6 @@
   </dialog>
 
   <div class="toasts" id="toasts" aria-live="polite"></div>
-  <script src="app.js"></script>
+  <script src="/app.js"></script>
 </body>
 </html>

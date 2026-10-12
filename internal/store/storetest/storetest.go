@@ -24,6 +24,8 @@ func Run(t *testing.T, newStore func(t *testing.T) store.Store) {
 		"Notify":   testNotifications,
 		"Votes":    testVotesAndSorts,
 		"Secret":   testSecret,
+		"Counters": testCounters,
+		"Blocks":   testBlocks,
 	}
 	for name, fn := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -66,6 +68,18 @@ func testAccounts(t *testing.T, s store.Store) {
 	}
 	if _, err := s.AccountByUsername(ctx, "nobody"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+
+	for want := 1; want <= 2; want++ {
+		if n, err := s.AddWelcome(ctx, "a1"); err != nil || n != want {
+			t.Fatalf("AddWelcome: want %d, got %d, %v", want, n, err)
+		}
+	}
+	if got, _ := s.AccountByUsername(ctx, "pixel_fan"); got.Welcomes != 2 {
+		t.Fatalf("want 2 welcomes saved, got %d", got.Welcomes)
+	}
+	if _, err := s.AddWelcome(ctx, "nobody"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("want ErrNotFound for an unknown account, got %v", err)
 	}
 }
 
@@ -317,6 +331,99 @@ func testVotesAndSorts(t *testing.T, s store.Store) {
 	got, _ := s.Threads(ctx, "gaming", store.SortTop, now, 1, 0)
 	if got[0].Ups != 3 || got[0].Downs != 0 {
 		t.Fatalf("threads should carry their vote counts, got %+v", got[0])
+	}
+}
+
+func testCounters(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	if n, err := s.Counter(ctx, "wishes:2026-10-11"); err != nil || n != 0 {
+		t.Fatalf("unset counter: want 0, got %d, %v", n, err)
+	}
+	for want := int64(1); want <= 3; want++ {
+		if n, err := s.AddCounter(ctx, "wishes:2026-10-11", 1); err != nil || n != want {
+			t.Fatalf("AddCounter: want %d, got %d, %v", want, n, err)
+		}
+	}
+	if err := s.SetCounter(ctx, "daily", 42); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetCounter(ctx, "daily", 43); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := s.Counter(ctx, "daily"); n != 43 {
+		t.Fatalf("SetCounter: want 43, got %d", n)
+	}
+	if n, _ := s.Counter(ctx, "wishes:2026-10-11"); n != 3 {
+		t.Fatalf("want 3, got %d", n)
+	}
+}
+
+func testBlocks(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	if err := s.CreateAccount(ctx, account("a1", "founder")); err != nil {
+		t.Fatal(err)
+	}
+	official := &store.Block{Slug: "gaming", Name: "Gaming", Bullet: "🎮", Color: "#8b6bf2", About: "Games", Template: "arcade", Official: true, CreatedAt: now}
+	mine := &store.Block{Slug: "Knitting", Name: "Knit & Chill", Bullet: "🧶", Color: "#ff6fae", About: "Yarn talk", Template: "lounge", OwnerID: "a1", CreatedAt: now.Add(time.Hour)}
+	for _, b := range []*store.Block{mine, official} {
+		if err := s.CreateBlock(ctx, b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.CreateBlock(ctx, &store.Block{Slug: "knitting", Name: "x", CreatedAt: now}); !errors.Is(err, store.ErrNameTaken) {
+		t.Fatalf("want ErrNameTaken for a different-case duplicate, got %v", err)
+	}
+	got, err := s.BlockBySlug(ctx, "KNITTING")
+	if err == nil && got.CreatedAt.Equal(mine.CreatedAt) {
+		got.CreatedAt = mine.CreatedAt // same moment; the zone may differ
+	}
+	if err != nil || *got != *mine {
+		t.Fatalf("block didn't round-trip:\nwant %+v\ngot  %+v (%v)", mine, got, err)
+	}
+	if _, err := s.BlockBySlug(ctx, "nope"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+	all, err := s.SearchBlocks(ctx, "", 10)
+	if err != nil || len(all) != 2 || all[0].Slug != "gaming" {
+		t.Fatalf("want official first, got %+v (%v)", all, err)
+	}
+	if found, _ := s.SearchBlocks(ctx, "CHILL", 10); len(found) != 1 || found[0].Slug != "Knitting" {
+		t.Fatalf("search by name: %+v", found)
+	}
+	if n, _ := s.BlocksStartedSince(ctx, "a1", now); n != 1 {
+		t.Fatalf("want 1 block started since, got %d", n)
+	}
+	if n, _ := s.BlocksStartedSince(ctx, "a1", now.Add(2*time.Hour)); n != 0 {
+		t.Fatalf("want 0 blocks started later, got %d", n)
+	}
+
+	// Storefronts: one block per lot, and they can move or close.
+	if mineList, _ := s.BlocksByOwner(ctx, "a1"); len(mineList) != 1 || mineList[0].Slug != "Knitting" {
+		t.Fatalf("BlocksByOwner: %+v", mineList)
+	}
+	if err := s.SetBlockLot(ctx, "knitting", "ave-1", 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetBlockLot(ctx, "gaming", "ave-1", 2); !errors.Is(err, store.ErrNameTaken) {
+		t.Fatalf("want ErrNameTaken for a taken lot, got %v", err)
+	}
+	if err := s.SetBlockLot(ctx, "gaming", "ave-2", 2); err != nil {
+		t.Fatalf("the same lot number on another avenue is fine: %v", err)
+	}
+	if lots, _ := s.BlocksWithLots(ctx); len(lots) != 2 {
+		t.Fatalf("want 2 storefronts, got %+v", lots)
+	}
+	if err := s.SetBlockLot(ctx, "knitting", "", 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetBlockLot(ctx, "gaming", "ave-1", 2); err != nil {
+		t.Fatalf("a freed lot can be taken: %v", err)
+	}
+	if b, _ := s.BlockBySlug(ctx, "gaming"); b.Street != "ave-1" || b.Lot != 2 {
+		t.Fatalf("lot not saved: %+v", b)
+	}
+	if err := s.SetBlockLot(ctx, "nope", "ave-1", 3); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
 	}
 }
 

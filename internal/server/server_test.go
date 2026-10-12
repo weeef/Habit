@@ -209,14 +209,21 @@ func TestBoardPostReplyAndNotify(t *testing.T) {
 		t.Fatalf("thread should be anonymous and on the plaza board, got %v", thread)
 	}
 	id := thread["id"]
-	if upd := other.expect("board_update")["thread"].(map[string]any); upd["id"] != id {
-		t.Fatalf("people in the room should see the new thread, got %v", upd)
+	// (The day's question may go up on the board too; skip past it.)
+	for {
+		if upd := other.expect("board_update")["thread"].(map[string]any); upd["id"] == id {
+			break
+		}
 	}
 
 	// Guests can read boards and threads.
 	guest.send(map[string]any{"t": "board", "room": "plaza"})
-	if threads := guest.expect("board")["threads"].([]any); len(threads) != 1 {
-		t.Fatalf("want 1 thread on the board, got %v", threads)
+	found := false
+	for _, th := range guest.expect("board")["threads"].([]any) {
+		found = found || th.(map[string]any)["id"] == id
+	}
+	if !found {
+		t.Fatalf("guests should see the new thread on the board")
 	}
 
 	other.send(map[string]any{"t": "thread", "thread": id})

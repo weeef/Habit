@@ -44,12 +44,12 @@ func Open(ctx context.Context, url string) (*Store, error) {
 func (s *Store) Close() { s.pool.Close() }
 
 const accountCols = `a.id, a.username, a.birth_year, a.created_at, a.salt, a.password_hash, a.recovery_hash,
-	a.style_skin, a.style_hair, a.style_outfit, a.style_accessory`
+	a.style_skin, a.style_hair, a.style_outfit, a.style_accessory, a.welcomes`
 
 func scanAccount(row pgx.Row) (*store.Account, error) {
 	var a store.Account
 	err := row.Scan(&a.ID, &a.Username, &a.BirthYear, &a.CreatedAt, &a.Salt, &a.PasswordHash, &a.RecoveryHash,
-		&a.Style.Skin, &a.Style.Hair, &a.Style.Outfit, &a.Style.Accessory)
+		&a.Style.Skin, &a.Style.Hair, &a.Style.Outfit, &a.Style.Accessory, &a.Welcomes)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, store.ErrNotFound
 	}
@@ -76,6 +76,115 @@ func (s *Store) CreateAccount(ctx context.Context, a *store.Account) error {
 func (s *Store) AccountByUsername(ctx context.Context, username string) (*store.Account, error) {
 	return scanAccount(s.pool.QueryRow(ctx,
 		`SELECT `+accountCols+` FROM accounts a WHERE lower(a.username) = lower($1)`, username))
+}
+
+func (s *Store) AddWelcome(ctx context.Context, accountID string) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx,
+		`UPDATE accounts SET welcomes = welcomes + 1 WHERE id = $1 RETURNING welcomes`, accountID).Scan(&n)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, store.ErrNotFound
+	}
+	return n, err
+}
+
+const blockCols = `slug, name, bullet, color, about, template, coalesce(owner_id, ''), official, created_at, street, lot`
+
+func scanBlock(row pgx.Row) (*store.Block, error) {
+	var b store.Block
+	err := row.Scan(&b.Slug, &b.Name, &b.Bullet, &b.Color, &b.About, &b.Template, &b.OwnerID, &b.Official, &b.CreatedAt, &b.Street, &b.Lot)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, store.ErrNotFound
+	}
+	return &b, err
+}
+
+func (s *Store) CreateBlock(ctx context.Context, b *store.Block) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO blocks (slug, name, bullet, color, about, template, owner_id, official, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''), $8, $9)`,
+		b.Slug, b.Name, b.Bullet, b.Color, b.About, b.Template, b.OwnerID, b.Official, b.CreatedAt)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return store.ErrNameTaken
+	}
+	return err
+}
+
+func (s *Store) BlockBySlug(ctx context.Context, slug string) (*store.Block, error) {
+	return scanBlock(s.pool.QueryRow(ctx, `SELECT `+blockCols+` FROM blocks WHERE lower(slug) = lower($1)`, slug))
+}
+
+func (s *Store) SearchBlocks(ctx context.Context, query string, limit int) ([]store.Block, error) {
+	return s.queryBlocks(ctx, `SELECT `+blockCols+` FROM blocks
+		 WHERE strpos(lower(slug), lower($1)) > 0 OR strpos(lower(name), lower($1)) > 0
+		 ORDER BY official DESC, lower(name) LIMIT $2`, query, limit)
+}
+
+func (s *Store) BlocksByOwner(ctx context.Context, ownerID string) ([]store.Block, error) {
+	return s.queryBlocks(ctx, `SELECT `+blockCols+` FROM blocks WHERE owner_id = $1 ORDER BY lower(name)`, ownerID)
+}
+
+func (s *Store) BlocksWithLots(ctx context.Context) ([]store.Block, error) {
+	return s.queryBlocks(ctx, `SELECT `+blockCols+` FROM blocks WHERE lot <> 0 ORDER BY lower(name)`)
+}
+
+func (s *Store) SetBlockLot(ctx context.Context, slug, street string, lot int) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE blocks SET street = $2, lot = $3 WHERE lower(slug) = lower($1)`, slug, street, lot)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return store.ErrNameTaken
+	}
+	if err == nil && tag.RowsAffected() == 0 {
+		return store.ErrNotFound
+	}
+	return err
+}
+
+func (s *Store) queryBlocks(ctx context.Context, sql string, args ...any) ([]store.Block, error) {
+	rows, err := s.pool.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.Block
+	for rows.Next() {
+		b, err := scanBlock(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *b)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) BlocksStartedSince(ctx context.Context, ownerID string, since time.Time) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM blocks WHERE owner_id = $1 AND created_at > $2`, ownerID, since).Scan(&n)
+	return n, err
+}
+
+func (s *Store) Counter(ctx context.Context, key string) (int64, error) {
+	var n int64
+	err := s.pool.QueryRow(ctx, `SELECT value FROM counters WHERE key = $1`, key).Scan(&n)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return n, err
+}
+
+func (s *Store) AddCounter(ctx context.Context, key string, delta int64) (int64, error) {
+	var n int64
+	err := s.pool.QueryRow(ctx,
+		`INSERT INTO counters (key, value) VALUES ($1, $2)
+		 ON CONFLICT (key) DO UPDATE SET value = counters.value + EXCLUDED.value RETURNING value`, key, delta).Scan(&n)
+	return n, err
+}
+
+func (s *Store) SetCounter(ctx context.Context, key string, value int64) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO counters (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key, value)
+	return err
 }
 
 func (s *Store) CreateSession(ctx context.Context, tokenHash []byte, accountID string, at time.Time) error {

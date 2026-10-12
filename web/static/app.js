@@ -9,10 +9,26 @@ const store = {
   del(k) { try { localStorage.removeItem(k); } catch {} },
 };
 
-function toast(text, ms = 3500) {
+// toast shows a short message. With actions, it's a little card with
+// buttons ({ label, primary, run }); pressing one closes it.
+function toast(text, ms = 3500, actions = []) {
   const el = document.createElement("div");
   el.className = "toast";
   el.textContent = text;
+  if (actions.length) {
+    el.classList.add("has-actions");
+    const row = document.createElement("span");
+    row.className = "toast-actions";
+    for (const a of actions) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = a.label;
+      if (!a.primary) b.className = "ghost";
+      b.onclick = () => { el.remove(); a.run?.(); };
+      row.append(b);
+    }
+    el.append(row);
+  }
   // An open dialog (like the board) sits above the page, so show the toast
   // inside it or it would be hidden.
   const dialog = [...document.querySelectorAll("dialog[open]")].pop();
@@ -50,6 +66,17 @@ const THEMES = {
   },
   gaming: { void: "#1c1733", floorA: "#3d3573", floorB: "#3a326e", accent: "#a78bfa", deco: "star" },
   gym: { floorA: "#d6f2e4", floorB: "#cdeedd", accent: "#ff9466", deco: "leaf" },
+  // The town's avenues look like the Plaza: paving, sidewalks, a skyline.
+  avenue: {
+    accent: "#3cc28f", deco: null, outdoor: true, void: "#d6eeff",
+    materials: { ".": ["#f6f1ea", "#f1ebe3"], ",": ["#e6e4ea", "#e0dee5"], ":": ["#fde9d0", "#f9e2c6"] },
+  },
+  // Rooms people pick when they start a block.
+  lounge: { floorA: "#f3e1cb", floorB: "#eed9c0", accent: "#d08a55", deco: null },
+  park: {
+    accent: "#3cc28f", deco: "flower",
+    materials: { ".": ["#c4e8a8", "#bce39f"], ",": ["#f1e4c6", "#ecddbb"] },
+  },
 };
 const DAY_MS = 24 * 60 * 1000; // a plaza day lasts 24 minutes: one real minute is one plaza hour
 // Character palettes. The server stores a style as indexes into these, so
@@ -133,6 +160,7 @@ const state = {
   lastReply: null,     // reply text, restored if the post fails
   notes: [],           // replies to you, newest first
   particles: [],       // floating sparkles, hearts, coins, petals
+  fireworks: [],       // over the plaza when the fountain fills
   lastFrame: 0,
   hits: [],            // props drawn this frame, for clicks and hover
   birds: [],           // the plaza's pigeons
@@ -147,7 +175,9 @@ const state = {
 
 function connect() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  // A link like /h/knitting opens straight into that block.
+  const slug = blockFromPath();
+  const ws = new WebSocket(`${proto}://${location.host}/ws${slug ? `?room=${encodeURIComponent(slug)}` : ""}`);
   state.ws = ws;
   ws.onopen = () => {
     const token = store.get("habit.token");
@@ -177,6 +207,7 @@ function onMessage(m) {
       state.you = m.you;
       state.avatars.clear();
       state.particles = [];
+      state.fireworks = [];
       state.birds = [];
       for (const a of m.avatars) addAvatar(a);
       $("chatTitle").textContent = `Chat in ${plainName(m.room.name)}`;
@@ -184,7 +215,29 @@ function onMessage(m) {
       renderNav();
       hideTooltip();
       if (!state.thread) loadBoard(0); // also fills the room's noticeboard
+      enteredRoom();
+      showBlockLink(m.room);
       break;
+
+    case "blocks":
+      if (m.q === ($("blockSearch").value || "").trim()) { state.directory = m.blocks; renderSubway(); }
+      break;
+    case "block_created": blockCreated(m.block); break;
+    case "block_error":
+      if ($("leaseDialog").open) $("leaseError").textContent = m.message;
+      else if ($("blockDialog").open) $("blockError").textContent = m.message;
+      else toast(m.message, 5000);
+      $("blockSubmit").disabled = false;
+      break;
+    case "doors":
+      if (state.room?.id === m.room) {
+        state.room.doors = m.doors;
+        state.room.doorsVer = (state.room.doorsVer || 0) + 1;
+        delete state.room._blocks; // rebuild the skyline round the new shop
+      }
+      break;
+    case "my_blocks": renderLease(m.blocks); break;
+    case "lot_claimed": lotClaimed(m.block); break;
 
     case "enter": addAvatar(m.avatar); break;
     case "leave": state.avatars.delete(m.id); break;
@@ -218,6 +271,7 @@ function onMessage(m) {
 
     case "chat": {
       appendLog(m.msg);
+      if (m.msg.from === state.you) questDone("hi");
       const a = state.avatars.get(m.msg.from);
       if (a) {
         a.bubbles.push({ text: m.msg.text, at: performance.now() });
@@ -235,13 +289,23 @@ function onMessage(m) {
       const a = state.avatars.get(m.id);
       if (a) { a.emote = m.emote; a.emoteAt = performance.now(); }
       if (m.emote === "heart") spawnHearts(m.id);
+      if (m.emote === "wave" && m.id === state.you) questDone("hi");
       break;
     }
 
     case "counts":
       state.counts = m.counts;
       renderNav();
+      checkQuiet();
       break;
+
+    case "today": setToday(m.today); break;
+    case "goal": reachedGoal(m); break;
+    case "fireworks": launchFireworks(); break;
+    case "missed": showMissed(m); break;
+    case "nudge": nudged(m.id); break;
+    case "welcomed": welcomed(m.by, m.to); break;
+    case "welcomes": toast(`💛 You welcomed someone new! That's ${m.count} so far.`, 4500); break;
 
     case "peek": showPeek(m); break;
 
@@ -367,7 +431,14 @@ const ROOM_LINES = {
   gaming: { color: "#8b6bf2", bullet: "🎮" },
   gym: { color: "#f08a3c", bullet: "🏋️" },
 };
-function roomLine(id) { return ROOM_LINES[id] || { color: "#4f7fd6", bullet: "🚪" }; }
+// roomLine is a room's bullet and colour on the subway map.
+function roomLine(id) {
+  const b = state.room?.id === id ? state.room.block : null;
+  const known = b || state.rooms.find((r) => r.id === id && r.bullet) || state.directory?.find((d) => d.slug === id);
+  if (known) return { color: known.color, bullet: known.bullet };
+  if (id.startsWith("ave-")) return { color: "#3cc28f", bullet: "🏙️" };
+  return ROOM_LINES[id] || { color: "#4f7fd6", bullet: "🚪" };
+}
 function plainName(name) { return name.replace(/^\p{Extended_Pictographic}️?\s*/u, ""); }
 
 // renderNav updates the station sign: where you are and who's here.
@@ -928,6 +999,7 @@ function drawFrame(now) {
   state.lastFrame = now;
   state.hits = [];
   state.doorHits = [];
+  state.lotHits = [];
   state.glows = [];
   state.labelQueue = []; // labels are drawn last, so night never dims them
 
@@ -945,7 +1017,7 @@ function drawFrame(now) {
     const litStep = Math.round(state.lit * 20) / 20;
     const sky = [];
     for (const x of [-0.5 - D, W + 0.5]) for (const y of [-0.5 - D, H + 0.5]) for (const hh of [0, 13]) sky.push([x, y, hh]);
-    worldLayer(`city|${state.room.id}|${litStep}`, extentOf(sky, z), z, () => drawSkyline(z, litStep));
+    worldLayer(`city|${state.room.id}|${state.room.doorsVer || 0}|${litStep}`, extentOf(sky, z), z, () => drawSkyline(z, litStep));
     drawBillboards(z, now, state.lit);
   } else {
     chip.hidden = true;
@@ -984,6 +1056,7 @@ function drawFrame(now) {
   };
   const drawables = [];
   for (const d of state.room.doors) drawables.push({ depth: d.pos[0] + d.pos[1] - 0.5, draw: () => drawDoor(d, z, now) });
+  for (const l of emptyLots()) drawables.push({ depth: l.pos[0] + l.pos[1] - 0.5, draw: () => drawLeaseLot(l, z) });
   for (const p of state.room.props || []) {
     const gm = propGeom(p);
     if (!visible(gm.x, gm.y, 260)) continue;
@@ -1027,6 +1100,7 @@ function drawFrame(now) {
 
   drawParticles(z, dt);
   if (cycle) drawDaylight(w, h, cycle, state.lit, z, now);
+  drawFireworks(z, dt); // they light up the night, so they go over it
 
   const labels = state.labelQueue;
   state.labelQueue = null;
@@ -1144,6 +1218,8 @@ function cityBlocks() {
   const rows = state.room.rows, W = rows[0].length, H = rows.length;
   const blocks = [];
   let i = 0, signs = 0;
+  // Doors and empty shop lots each get a storefront's worth of frontage.
+  const fronts = [...state.room.doors.map((d) => d.pos), ...emptyLots().map((l) => l.pos)];
   for (const side of ["right", "left"]) {
     const len = side === "right" ? W : H;
     let a = -0.5;
@@ -1153,9 +1229,9 @@ function cityBlocks() {
       let width = Math.min(len - 0.5 - a, style === "brownstone" ? 2 : hash2(i * 7 + 3, 11) < 0.5 ? 3 : 4);
       // Give each door's storefront a good 4 tiles centred on the door:
       // the building before it stops short to make room.
-      const door = state.room.doors.find((d) => (side === "left" ? d.pos[0] === 0 && d.pos[1] > a : d.pos[1] === 0 && d.pos[0] > a));
+      const door = fronts.find((p) => (side === "left" ? p[0] === 0 && p[1] > a : p[1] === 0 && p[0] > a));
       if (door) {
-        const dc = side === "left" ? door.pos[1] : door.pos[0];
+        const dc = side === "left" ? door[1] : door[0];
         if (dc - 2 - a < 1.5) width = Math.min(len - 0.5 - a, dc + 2 - a); // this block is the storefront
         else width = Math.min(width, dc - 2 - a);
       }
@@ -1176,14 +1252,57 @@ function cityBlocks() {
     const side = d.pos[0] === 0 ? "left" : "right", c = side === "left" ? d.pos[1] : d.pos[0];
     const b = blocks.find((x) => x.side === side && x.a0 < c && c < x.a1);
     if (!b) continue;
-    const front = DOOR_FRONTS[d.target] || DOOR_FRONTS.default;
+    const front = DOOR_FRONTS[d.target] || storefrontLook(d);
     Object.assign(b, front, {
       door: { target: d.target, c, label: d.label }, shop: false, waterTower: false,
       signAt: [Math.max(b.a0 + 0.1, c - 1.1), Math.min(b.a1 - 0.1, c + 1.1), 1.3, 2.15],
     });
   }
+  // Empty lots on an avenue: a shop with a "for lease" sign.
+  for (const l of emptyLots()) {
+    const c = l.pos[0];
+    const b = blocks.find((x) => x.side === "right" && x.a0 < c && c < x.a1);
+    if (!b) continue;
+    Object.assign(b, {
+      style: "brick", color: "#d9cfc6", height: 3.6, sign: "FOR LEASE", signHue: 45,
+      lease: l, shop: false, waterTower: false,
+      signAt: [Math.max(b.a0 + 0.1, c - 1.2), Math.min(b.a1 - 0.1, c + 1.2), 1.3, 2.1],
+    });
+  }
   state.room._blocks = blocks;
   return blocks;
+}
+
+// emptyLots are an avenue's shop lots with no storefront on them yet.
+function emptyLots() {
+  const lots = state.room?.lots || [];
+  return lots.map((pos, i) => ({ pos, n: i + 1 }))
+    .filter((l) => !state.room.doors.some((d) => d.pos[0] === l.pos[0] && d.pos[1] === l.pos[1]));
+}
+
+// storefrontLook is how a door's building looks: a gateway with a street
+// sign for an avenue, a shop in the block's colour with its name in neon
+// for a block's storefront.
+function storefrontLook(d) {
+  if (d.target.startsWith("ave-")) return { style: "gate", color: "#5c6b62", height: 3.4, sign: plainName(d.label).toUpperCase(), signHue: 140 };
+  if (d.color) {
+    return { style: "brick", color: mixHex(d.color, "#ffffff", 0.45), height: 4.6, sign: plainName(d.label).toUpperCase().slice(0, 16), signHue: hexHue(d.color) };
+  }
+  return DOOR_FRONTS.default;
+}
+
+function mixHex(a, b, t) {
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+  const ch = (s) => Math.round(((pa >> s) & 255) + (((pb >> s) & 255) - ((pa >> s) & 255)) * t);
+  return "#" + [16, 8, 0].map((s) => ch(s).toString(16).padStart(2, "0")).join("");
+}
+
+function hexHue(hex) {
+  const n = parseInt(hex.slice(1), 16), r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  if (!d) return 0;
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
 }
 
 // pw projects a world point (tiles, height in tiles) to the screen.
@@ -1244,6 +1363,17 @@ function drawBuilding(b, z, lit) {
     }
   };
 
+  if (b.style === "gate") {
+    // An avenue's gateway: a gap in the buildings, framed by two pillars
+    // and a beam, with the street's green sign above.
+    const c = b.door.c, half = Math.min(1.35, (b.a1 - b.a0) / 2 - 0.05), w = 0.3;
+    const right = b.side === "right";
+    const along = (u0, u1, h0, h1) => right ? drawBox(u0, u1, y0 + 0.4, y1, h0, h1, b.color, z) : drawBox(x0 + 0.4, x1, u0, u1, h0, h1, b.color, z);
+    along(c - half, c - half + w, 0, 2.9);
+    along(c + half - w, c + half, 0, 2.9);
+    along(c - half, c + half, 2.6, 2.95);
+    return;
+  }
   if (b.style === "arcade") {
     // The arcade: a purple front, game screens glowing in every window, a
     // pixel invader near the roof, and cabinets behind the shop windows.
@@ -2264,7 +2394,7 @@ function drawStorefrontDoor(d, z) {
   const b = outdoors() && cityBlocks().find((x) => x.door?.target === d.target);
   if (!b) return false;
   z_ = z;
-  const g = blockGeom(b), c = b.door.c, accent = theme(d.target).accent;
+  const g = blockGeom(b), c = b.door.c, accent = d.color || (d.target.startsWith("ave-") ? "#3cc28f" : theme(d.target).accent);
   const { sx, sy } = toScreen(d.pos[0], d.pos[1]);
   ctx.globalAlpha = 0.28;
   ctx.fillStyle = accent;
@@ -2558,7 +2688,11 @@ function handleFx(m) {
     if (tip?.id === p.id && !$("tooltip").hidden) showTip(PROP_TIPS.fountain(p), tip.px, tip.py, tip.r);
     const from = a ? a.from : { x: gm.x + 1, y: gm.y + 1 };
     state.particles.push({ kind: "coin", x: from.x, y: from.y, x1: gm.x, y1: gm.y, h: 30, vx: 0, vh: 0, life: 0, max: 650, color: "#ffcf3f", size: 3 });
-    if (m.by === state.you) toast(`🪙 You made wish #${m.count} ✨`);
+    if (state.today && m.today) { state.today.wishes = m.today; renderToday(); }
+    if (m.by === state.you) {
+      toast(m.today ? `🪙 Wish ${m.today} of ${m.goal} today ✨` : `🪙 You made wish #${m.count} ✨`);
+      questDone("wish");
+    }
   } else if (p.kind === "tree") {
     state.shakes[p.id] = now;
     for (let i = 0; i < 16; i++) {
@@ -2582,7 +2716,7 @@ function handleFx(m) {
     // Whoever bought something carries it for a while.
     const look = CART_LOOKS[m.variant] || CART_LOOKS.hotdog;
     if (a) a.holding = { emoji: look.emoji, until: now + 30000 };
-    if (m.by === state.you) toast(`${look.emoji} You grabbed ${look.item}!`);
+    if (m.by === state.you) { toast(`${look.emoji} You grabbed ${look.item}!`); questDone("snack"); }
   } else if (p.kind === "hydrant") {
     // A big spray of water arcing out and splashing down.
     for (let i = 0; i < 34; i++) {
@@ -2686,6 +2820,13 @@ function drawAvatar(a, p, now, z) {
   const blink = (now + a.seed * 4000) % 4200 < 140;
   const happy = emoting && a.emote !== "sit";
   const closed = happy || blink;
+
+  // Someone new nobody has said hi to yet: a soft glow on the ground.
+  if (a.spotlight > now) {
+    const pulse = 1 + Math.sin(now / 260) * 0.12;
+    ctx.fillStyle = "rgb(255 207 63 / 0.3)";
+    oval(sx, sy, 24 * z * pulse, 10 * z * pulse);
+  }
 
   // Soft shadow.
   ctx.fillStyle = "rgb(90 50 90 / 0.15)";
@@ -3073,6 +3214,13 @@ canvas.addEventListener("pointermove", (e) => {
   if (!state.room) return;
   const r = canvas.getBoundingClientRect();
   const px = e.clientX - r.left, py = e.clientY - r.top;
+  const lot = lotUnder(px, py);
+  if (lot) {
+    canvas.style.cursor = "pointer";
+    showTip(["🏪 For lease", "Click to put your block's storefront here."], px, py, r);
+    state.tip = null;
+    return;
+  }
   const door = doorUnder(px, py);
   // Hovering a storefront entrance counts as hovering its door tile (peek).
   const t = door ? { x: door.pos[0], y: door.pos[1] } : toTile(px, py);
@@ -3105,6 +3253,11 @@ canvas.addEventListener("click", (e) => {
   if (!state.room) return;
   const r = canvas.getBoundingClientRect();
   const px = e.clientX - r.left, py = e.clientY - r.top;
+  const lot = lotUnder(px, py);
+  if (lot) {
+    openLease(lot);
+    return;
+  }
   const door = doorUnder(px, py);
   if (door) {
     // Clicking a storefront entrance walks you in.
@@ -3119,7 +3272,7 @@ canvas.addEventListener("click", (e) => {
     send({ t: "use", prop: prop.id });
     if (prop.kind === "board") openBoard();
     if (prop.kind === "subway") openSubway();
-    if (prop.kind === "newsbox") toast(`📰 ${HEADLINES[Math.floor(Math.random() * HEADLINES.length)]}`, 5000);
+    if (prop.kind === "newsbox") toast(`📰 ${headline()}`, 5000);
     $("hint").hidden = true;
     return;
   }
@@ -3130,31 +3283,71 @@ canvas.addEventListener("click", (e) => {
   }
 });
 
-// openSubway shows the subway map: every room, with how many are inside.
+// openSubway shows the subway map: the Plaza and every block, busiest
+// first, with a search and a way to start your own.
 function openSubway() {
+  $("blockSearch").value = "";
+  state.directory = state.directory || [];
+  renderSubway();
+  send({ t: "blocks", q: "" });
+  if (!$("subwayDialog").open) $("subwayDialog").showModal();
+}
+
+function renderSubway() {
   const list = $("subwayLines");
   list.replaceChildren();
-  state.rooms.forEach((r) => {
-    const here = state.room?.id === r.id;
+  const q = $("blockSearch").value.trim().toLowerCase();
+  const stops = [];
+  if (!q || "plaza".includes(q) || "the plaza".includes(q)) {
+    stops.push({ slug: "plaza", name: "The Plaza", about: "The city square. Everyone starts here.", count: state.counts.plaza ?? 0, bullet: ROOM_LINES.plaza.bullet, color: ROOM_LINES.plaza.color, plaza: true });
+  }
+  for (const r of state.rooms) {
+    if (r.kind !== "street" || (q && !r.name.toLowerCase().includes(q))) continue;
+    stops.push({ slug: r.id, name: plainName(r.name), about: "Shops and storefronts for blocks.", count: state.counts[r.id] ?? 0, bullet: "🏙️", color: "#3cc28f", plaza: true });
+  }
+  stops.push(...(state.directory || []));
+  const top = Math.max(0, ...stops.filter((s) => !s.plaza).map((s) => s.count));
+  for (const s of stops) {
+    const here = state.room?.id === s.slug;
     const b = el("button", "subway-stop");
     b.type = "button";
     b.disabled = here;
-    const line = roomLine(r.id);
-    const dot = el("span", "line", line.bullet);
-    dot.style.background = line.color;
-    const n = state.counts[r.id] ?? 0;
-    b.append(dot, el("span", "stop", plainName(r.name)), el("span", "meta", here ? "You're here" : `${n} inside`));
+    const dot = el("span", "line", s.bullet);
+    dot.style.background = s.color;
+    const title = el("span", "stop", s.name);
+    if (s.yours) title.append(el("span", "tag", "Yours"));
+    const text = el("span", "stop-text");
+    text.append(title);
+    if (!s.plaza) text.append(el("span", "slug", `h/${s.slug}`));
+    if (s.about) text.append(el("span", "about", s.about));
+    if (s.street) text.append(el("span", "about", `🏪 Storefront on ${s.street}`));
+    const meta = here ? "You're here" : s.count === 0 ? "Quiet right now" : !s.plaza && s.count === top ? `🔥 ${s.count} inside` : `${s.count} inside`;
+    b.append(dot, text, el("span", "meta", meta));
     b.onclick = () => {
       $("subwayDialog").close();
-      send({ t: "teleport", room: r.id });
-      toast(`🚇 Riding to ${r.name}…`);
+      send({ t: "teleport", room: s.slug });
+      toast(`🚇 Riding to ${s.name}…`);
     };
     const li = el("li");
     li.append(b);
     list.append(li);
-  });
-  if (!$("subwayDialog").open) $("subwayDialog").showModal();
+  }
+  if (q && !(state.directory || []).length) {
+    const empty = el("li", "subway-empty", `No blocks match "${q}" yet.`);
+    const start = el("button", "", `Start "${q}"`);
+    start.type = "button";
+    start.onclick = () => startBlock(q);
+    empty.append(start);
+    list.append(empty);
+  }
 }
+
+let searchTimer = 0;
+$("blockSearch").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => send({ t: "blocks", q: $("blockSearch").value.trim() }), 200);
+});
+$("newBlockBtn").onclick = () => startBlock("");
 $("subwayClose").onclick = () => $("subwayDialog").close();
 
 // The chat panel can be tucked away to see more of the world.
@@ -3285,3 +3478,577 @@ function startCreator() {
 
 connect();
 requestAnimationFrame(draw);
+
+// ---- welcomes, quiet rooms and first stops (PLAN.md §4.1) ----
+
+const SPOTLIGHT_MS = 90000;
+
+// nudged: the server asks us to say hi to someone who just walked in.
+function nudged(id) {
+  const a = state.avatars.get(id);
+  if (!a || id === state.you) return;
+  a.spotlight = performance.now() + SPOTLIGHT_MS;
+  const actions = [{ label: "👋 Wave", primary: true, run: () => greet(id, () => send({ t: "emote", emote: "wave" })) }];
+  if (state.account) {
+    actions.push({ label: "Say hi", run: () => greet(id, () => { $("say").value = "Hi! Welcome 👋"; $("say").focus(); }) });
+  }
+  actions.push({ label: "Not now" });
+  toast("Someone new just walked in. Say hi?", 15000, actions);
+}
+
+// greet walks over to someone if they're far off, turns to face them, then
+// does the greeting.
+function greet(id, then) {
+  const me = state.avatars.get(state.you), them = state.avatars.get(id);
+  if (!me || !them) { then(); return; }
+  const face = () => { me.turnTarget = Math.atan2(them.from.y - me.from.y, them.from.x - me.from.x); };
+  const dx = them.from.x - me.from.x, dy = them.from.y - me.from.y, d = Math.max(Math.abs(dx), Math.abs(dy));
+  if (d <= 4) { face(); then(); return; }
+  // Stop a couple of tiles short of them.
+  send({ t: "walk", x: Math.round(them.from.x - (dx / d) * 2), y: Math.round(them.from.y - (dy / d) * 2) });
+  const until = performance.now() + 9000;
+  const wait = () => {
+    if (performance.now() > until) return;
+    if (me.path.length || me.moving) { setTimeout(wait, 150); return; }
+    face();
+    then();
+  };
+  setTimeout(wait, 300);
+}
+
+// welcomed: someone said hi to a newcomer. A little moment for both.
+function welcomed(by, to) {
+  const a = state.avatars.get(to);
+  if (a) a.spotlight = 0;
+  spawnHearts(by);
+  spawnHearts(to);
+  if (to === state.you) {
+    const g = state.avatars.get(by), me = state.avatars.get(state.you);
+    if (g && me) me.turnTarget = Math.atan2(g.from.y - me.from.y, g.from.x - me.from.x);
+    toast("👋 Someone said hi! Wave back?", 8000, [{ label: "👋 Wave back", primary: true, run: () => send({ t: "emote", emote: "wave" }) }]);
+  } else if (by === state.you && !state.account) {
+    toast("💛 You welcomed someone new!", 4000);
+  }
+}
+
+// If you're alone in a room while people are elsewhere, say where they are.
+let quietTimer = 0;
+function enteredRoom() {
+  if (state.afterRoom) {
+    const f = state.afterRoom;
+    state.afterRoom = null;
+    setTimeout(f, 300);
+  }
+  checkMissed();
+  state.quietShown = false;
+  state.quietReady = false;
+  clearTimeout(quietTimer);
+  // Give people a moment to show up before calling it quiet.
+  quietTimer = setTimeout(() => { state.quietReady = true; checkQuiet(); }, 2500);
+  renderQuest();
+}
+
+function checkQuiet() {
+  if (!state.room || !state.quietReady || state.quietShown) return;
+  if ((state.counts[state.room.id] ?? 0) > 1) return;
+  let best = null;
+  for (const r of state.rooms) {
+    const n = state.counts[r.id] ?? 0;
+    if (r.id !== state.room.id && n > 0 && (!best || n > best.n)) best = { r, n };
+  }
+  if (!best) return;
+  state.quietShown = true;
+  const who = best.n === 1 ? "1 person is" : `${best.n} people are`;
+  toast(`It's quiet in here. ${who} in ${plainName(best.r.name)}.`, 12000, [
+    { label: "🚇 Take me there", primary: true, run: () => send({ t: "teleport", room: best.r.id }) },
+    { label: "Stay" },
+  ]);
+}
+
+// The starter quest: three small things to do, each one click away.
+const QUEST = [
+  { key: "snack", icon: "🌭", text: "Grab a snack", hint: "at a food cart" },
+  { key: "wish", icon: "🪙", text: "Make a wish", hint: "in the fountain" },
+  { key: "hi", icon: "👋", text: "Say hi", hint: "or wave to someone" },
+];
+
+function questState() {
+  try { return JSON.parse(store.get("habit.quest") || "{}") || {}; } catch { return {}; }
+}
+
+function saveQuest(q) {
+  store.set("habit.quest", JSON.stringify(q));
+  renderQuest();
+}
+
+function questDone(key) {
+  const q = questState();
+  if (q.closed || q[key]) return;
+  q[key] = true;
+  saveQuest(q);
+  if (QUEST.every((s) => q[s.key])) {
+    spawnHearts(state.you);
+    toast("✨ That's everything. You're settled in!", 5000);
+    setTimeout(() => saveQuest({ ...questState(), closed: true }), 3000);
+  }
+}
+
+function renderQuest() {
+  const q = questState();
+  $("quest").hidden = !!q.closed;
+  if (q.closed) return;
+  const list = $("questSteps");
+  list.replaceChildren();
+  for (const s of QUEST) {
+    const b = el("button", "quest-step" + (q[s.key] ? " done" : ""));
+    b.type = "button";
+    b.disabled = !!q[s.key];
+    b.append(el("span", "quest-dot", q[s.key] ? "✓" : s.icon), el("span", "quest-text", s.text), el("span", "quest-hint", s.hint));
+    b.onclick = () => doQuest(s.key);
+    const li = el("li");
+    li.append(b);
+    list.append(li);
+  }
+}
+
+// doQuest does a step for you: walks to the nearest cart or the fountain
+// and uses it, or waves to whoever's nearest.
+function doQuest(key) {
+  const me = state.avatars.get(state.you);
+  if (key === "hi") {
+    let near = null, best = Infinity;
+    for (const [id, a] of state.avatars) {
+      if (id === state.you || !me) continue;
+      const d = Math.hypot(a.from.x - me.from.x, a.from.y - me.from.y);
+      if (d < best) { best = d; near = id; }
+    }
+    const wave = () => send({ t: "emote", emote: "wave" });
+    if (near) greet(near, wave);
+    else wave();
+    return;
+  }
+  const kind = key === "snack" ? "cart" : "fountain";
+  const props = (state.room?.props || []).filter((p) => p.kind === kind);
+  if (!props.length) {
+    toast(key === "snack" ? "🌭 The food carts are in the Plaza." : "⛲ The fountain is in the Plaza.", 5000, [
+      { label: "🚇 Go to the Plaza", primary: true, run: () => send({ t: "teleport", room: "plaza" }) },
+    ]);
+    return;
+  }
+  const dist = (p) => (me ? Math.hypot(p.at[0] - me.from.x, p.at[1] - me.from.y) : 0);
+  props.sort((a, b) => dist(a) - dist(b));
+  send({ t: "use", prop: props[0].id });
+}
+
+$("questClose").onclick = () => saveQuest({ ...questState(), closed: true });
+
+// ---- the daily rhythm: today in the plaza (PLAN.md §4.1 step 2) ----
+
+// setToday takes the server's view of the day: the question, the fountain,
+// the meetup. The meetup starting is announced to everyone, wherever they are.
+function setToday(t) {
+  const was = state.today;
+  state.today = t;
+  if (t.meetup && (!was || !was.meetup || was.day !== t.day)) announceMeetup();
+  renderToday();
+}
+
+function announceMeetup() {
+  const inPlaza = state.room?.id === "plaza";
+  toast("🔔 The evening meetup is on! Everyone's gathering at the fountain.", 15000, [
+    { label: inPlaza ? "⛲ Walk over" : "🚇 Go to the Plaza", primary: true, run: goToFountain },
+    { label: "Later" },
+  ]);
+}
+
+// goToFountain rides to the Plaza if need be, then walks over and tosses a
+// coin in (every wish counts towards the day's goal).
+function goToFountain() {
+  const go = () => send({ t: "use", prop: "fountain" });
+  if (state.room?.id === "plaza") go();
+  else {
+    state.afterRoom = go;
+    send({ t: "teleport", room: "plaza" });
+  }
+}
+
+function reachedGoal(m) {
+  if (state.today) { state.today.wishes = m.wishes; renderToday(); }
+  if (state.room?.id === "plaza") toast(`🎆 ${m.goal} wishes! The fountain is full. Fireworks!`, 6000);
+  else toast(`🎆 The fountain hit ${m.goal} wishes! Fireworks over the Plaza.`, 9000, [{ label: "🚇 Go see", primary: true, run: () => send({ t: "teleport", room: "plaza" }) }]);
+}
+
+// The meetup in the viewer's own clock, and how long until it.
+function meetupWhen(t, now = Date.now()) {
+  const at = new Date(t.meetupAt), end = new Date(t.meetupEnd);
+  const time = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (now >= end.getTime()) return { text: `Tonight's is over. Next one tomorrow at ${time}.`, live: false };
+  if (now >= at.getTime()) return { text: "On now! Everyone's at the fountain.", live: true };
+  const mins = Math.round((at.getTime() - now) / 60000);
+  const left = mins < 60 ? `in ${mins} min` : `in ${Math.floor(mins / 60)}h ${mins % 60}m`;
+  return { text: `${time} your time, ${left}`, live: false };
+}
+
+function renderToday() {
+  const t = state.today;
+  const card = $("today");
+  card.hidden = !t;
+  if (!t) return;
+  $("todayQuestionText").textContent = t.question;
+  const full = t.wishes >= t.goal;
+  $("todayBar").style.width = `${Math.min(100, (t.wishes / t.goal) * 100)}%`;
+  $("todayWishText").textContent = full
+    ? `${t.wishes} wishes. It's full! 🎆`
+    : `${t.wishes} of ${t.goal} wishes. Fireworks when it's full.`;
+  $("todayWishes").classList.toggle("full", full);
+  const when = meetupWhen(t);
+  $("todayMeetupText").textContent = when.text;
+  $("todayMeetup").classList.toggle("live", when.live);
+  $("todayMini").textContent = !$("missed").hidden && !todayOpen() ? "📌 News"
+    : when.live ? "🔔 Meetup now" : full ? "🎆 Full" : `⛲ ${t.wishes}/${t.goal}`;
+  const open = todayOpen();
+  $("todayToggle").setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+// The card starts open on big screens and folded on phones; your choice is
+// remembered for the day.
+function todayOpen() {
+  const saved = store.get("habit.todayOpen");
+  if (saved && state.today && saved.startsWith(state.today.day)) return saved.endsWith(":1");
+  return !matchMedia("(max-width: 760px)").matches;
+}
+$("todayToggle").onclick = () => {
+  if (!state.today) return;
+  store.set("habit.todayOpen", `${state.today.day}:${todayOpen() ? 0 : 1}`);
+  renderToday();
+};
+$("todayQuestion").onclick = () => { if (state.today) openBoard(state.today.thread); };
+$("todayWishes").onclick = goToFountain;
+$("todayMeetup").onclick = goToFountain;
+setInterval(() => { if (state.today) renderToday(); }, 30000); // keep the countdown fresh
+
+// headline: the newsbox mixes the boards' hottest posts with the usual news.
+function headline() {
+  const real = state.today?.headlines || [];
+  if (real.length && Math.random() < 0.6) return `On the boards: "${real[Math.floor(Math.random() * real.length)]}"`;
+  return HEADLINES[Math.floor(Math.random() * HEADLINES.length)];
+}
+
+// ---- what you missed ----
+
+const MISSED_AFTER = 30 * 60000; // away at least this long to get a catch-up
+
+// Remember when this browser was last here.
+function markSeen() { store.set("habit.lastSeen", String(Date.now())); }
+setInterval(markSeen, 60000);
+addEventListener("pagehide", markSeen);
+
+// checkMissed asks once per visit what happened since you were last here.
+function checkMissed() {
+  if (state.missedAsked) return;
+  state.missedAsked = true;
+  const last = Number(store.get("habit.lastSeen") || 0);
+  markSeen();
+  if (last && Date.now() - last >= MISSED_AFTER) send({ t: "missed", since: last });
+}
+
+function awayFor(mins) {
+  if (mins < 120) return `${mins} min`;
+  if (mins < 48 * 60) return `${Math.round(mins / 60)} hours`;
+  return `${Math.round(mins / 1440)} days`;
+}
+
+function showMissed(m) {
+  const list = $("missedList");
+  list.replaceChildren();
+  const add = (node) => { const li = el("li"); li.append(node); list.append(li); };
+  if (m.posts || m.active) {
+    const parts = [];
+    if (m.posts) parts.push(`${m.posts} new ${m.posts === 1 ? "post" : "posts"}`);
+    if (m.active > m.posts) parts.push(`${m.active} busy ${m.active === 1 ? "thread" : "threads"}`);
+    add(document.createTextNode(`📌 ${parts.join(", ")} on the boards`));
+    for (const t of m.top) {
+      const b = el("button", "", t.title);
+      b.type = "button";
+      b.onclick = () => openBoard(t.id);
+      add(b);
+    }
+  }
+  if (m.yesterdayWishes > 0) {
+    add(document.createTextNode(m.yesterdayWishes >= m.goal
+      ? `🎆 Yesterday the fountain filled up: ${m.yesterdayWishes} wishes`
+      : `⛲ Yesterday: ${m.yesterdayWishes} of ${m.goal} wishes`));
+  }
+  if (!list.children.length) return; // nothing worth saying
+  $("missedTitle").textContent = `While you were away (${awayFor(m.awayMinutes)})`;
+  $("missed").hidden = false;
+  // Open the card to show it, except on phones where space is tight; the
+  // folded card's line says there's news.
+  if (state.today && !matchMedia("(max-width: 760px)").matches) store.set("habit.todayOpen", `${state.today.day}:1`);
+  renderToday();
+}
+$("missedClose").onclick = () => { $("missed").hidden = true; };
+
+// ---- fireworks ----
+
+const FIREWORK_COLORS = ["#ff6fae", "#ffcd38", "#6fd3ff", "#8b6bf2", "#7be0a6", "#ffffff"];
+
+// launchFireworks sends a volley of rockets up around the fountain.
+function launchFireworks() {
+  if (state.room?.id !== "plaza") return;
+  const f = propById("fountain");
+  const cx = f ? f.at[0] + 0.5 : 15, cy = f ? f.at[1] + 0.5 : 15;
+  for (let i = 0; i < 16; i++) {
+    state.fireworks.push({
+      kind: "rocket", x: cx + (Math.random() - 0.5) * 14, y: cy + (Math.random() - 0.5) * 14, h: 0,
+      vh: 230 + Math.random() * 80, life: -i * 380 - Math.random() * 200, max: 900 + Math.random() * 300,
+      color: FIREWORK_COLORS[i % FIREWORK_COLORS.length],
+    });
+  }
+}
+
+function drawFireworks(z, dt) {
+  if (!state.fireworks.length) return;
+  const s = dt / 1000;
+  const born = [];
+  state.fireworks = state.fireworks.filter((q) => {
+    q.life += dt;
+    if (q.life < q.max) return true;
+    if (q.kind === "rocket") {
+      // Burst into a ring of sparks.
+      const n = 40;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + Math.random() * 0.1, sp = 105 + Math.random() * 35;
+        born.push({ kind: "spark", x: q.x, y: q.y, h: q.h, dx: 0, vx: Math.cos(a) * sp, vh: Math.sin(a) * sp, life: 0, max: 1300 + Math.random() * 500, color: i % 5 ? q.color : "#ffffff" });
+      }
+    }
+    return false;
+  });
+  state.fireworks.push(...born);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (const q of state.fireworks) {
+    if (q.life < 0) continue;
+    const t = q.life / q.max;
+    q.h += q.vh * s;
+    if (q.kind === "spark") {
+      q.vh -= 45 * s; // they droop as they fade
+      q.vx *= 1 - 0.8 * s;
+      q.vh *= 1 - 0.8 * s;
+      q.dx += q.vx * s;
+    }
+    const { sx, sy } = toScreen(q.x, q.y);
+    const px = sx + (q.dx || 0) * z * FIGURE_SCALE, py = sy - q.h * z * FIGURE_SCALE;
+    const a = q.kind === "rocket" ? 0.95 : Math.max(0, 1 - t) ** 1.3;
+    ctx.fillStyle = q.color;
+    const r = (q.kind === "rocket" ? 4 : 3.6) * z;
+    ctx.globalAlpha = a * 0.22; // soft glow
+    ctx.fillRect(px - r * 1.5, py - r * 1.5, r * 3, r * 3);
+    ctx.globalAlpha = a;
+    ctx.fillRect(px - r / 2, py - r / 2, r, r);
+    if (q.kind === "rocket") {
+      ctx.globalAlpha = 0.35;
+      ctx.fillRect(px - r / 4, py, r / 2, 22 * z); // a little trail
+    }
+  }
+  ctx.restore();
+}
+
+// ---- blocks: communities anyone can start (PLAN.md §2.6) ----
+
+// These match the server's lists (internal/server/blocks.go).
+const BLOCK_BULLETS = ["🎮", "🏋️", "🎵", "🎨", "📚", "🎬", "🍕", "☕", "🌱", "🐶", "🐱", "⚽", "🏀", "🎸", "📷", "✈️",
+  "💻", "🧶", "🎲", "🧠", "🚲", "🌙", "🔥", "💬", "🎤", "🛹", "🍜", "🌸", "🧪", "🏳️‍🌈"];
+const BLOCK_COLORS = ["#e5484d", "#f08a3c", "#e6b400", "#3cc28f", "#2fa3c7", "#4f7fd6", "#8b6bf2", "#d6409f", "#8a6a4f", "#5c6370"];
+const BLOCK_TEMPLATES = [
+  { id: "lounge", name: "Lounge", about: "Cozy, with benches" },
+  { id: "park", name: "Park", about: "Leafy, with paths" },
+  { id: "arcade", name: "Arcade", about: "Neon, like Gaming" },
+  { id: "gym", name: "Gym", about: "Bright, like the Gym" },
+];
+
+function blockFromPath() {
+  const m = location.pathname.match(/^\/h\/([A-Za-z0-9_]{3,21})\/?$/);
+  return m ? m[1].toLowerCase() : "";
+}
+
+// showBlockLink keeps the address bar on the room you're in, so it can be
+// shared, and says what a block is about when you walk in.
+function showBlockLink(room) {
+  const path = room.id === "plaza" ? "/" : `/h/${room.id}`;
+  if (location.pathname !== path) history.replaceState(null, "", path);
+  document.title = room.id === "plaza" ? "Habit" : `${plainName(room.name)} · h/${room.id} · Habit`;
+  if (room.block?.about) toast(`${room.name}: ${room.block.about}`, 4500);
+}
+
+function slugify(name) {
+  return name.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/&/g, "and").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 21);
+}
+
+const blockPick = { bullet: BLOCK_BULLETS[0], color: BLOCK_COLORS[6], template: "lounge", slugEdited: false };
+
+function startBlock(name) {
+  requireAccount(() => {
+    $("subwayDialog").close();
+    const f = $("blockForm");
+    f.reset();
+    f.elements.name.value = name;
+    f.elements.slug.value = slugify(name);
+    blockPick.slugEdited = false;
+    $("blockError").textContent = "";
+    $("blockSubmit").disabled = false;
+    renderBlockPickers();
+    $("blockDialog").showModal();
+    f.elements.name.focus();
+  });
+}
+
+function pickButton(cls, label, checked, onPick) {
+  const b = el("button", cls);
+  b.type = "button";
+  b.setAttribute("role", "radio");
+  b.setAttribute("aria-checked", checked ? "true" : "false");
+  b.setAttribute("aria-label", label);
+  b.onclick = () => { onPick(); renderBlockPickers(); };
+  return b;
+}
+
+function renderBlockPickers() {
+  const bullets = $("bulletPicker");
+  bullets.replaceChildren(...BLOCK_BULLETS.map((e) => {
+    const b = pickButton("", e, e === blockPick.bullet, () => { blockPick.bullet = e; });
+    b.textContent = e;
+    return b;
+  }));
+  const colors = $("colorPicker");
+  colors.replaceChildren(...BLOCK_COLORS.map((c) => {
+    const b = pickButton("color", c, c === blockPick.color, () => { blockPick.color = c; });
+    b.style.background = c;
+    return b;
+  }));
+  const templates = $("templatePicker");
+  templates.replaceChildren(...BLOCK_TEMPLATES.map((t) => {
+    const b = pickButton("", t.name, t.id === blockPick.template, () => { blockPick.template = t.id; });
+    b.append(document.createTextNode(t.name), el("span", "", t.about));
+    return b;
+  }));
+  const f = $("blockForm");
+  $("blockPreviewBullet").textContent = blockPick.bullet;
+  $("blockPreviewBullet").style.background = blockPick.color;
+  $("blockPreviewName").textContent = f.elements.name.value.trim() || "Your block";
+  $("blockPreviewSlug").textContent = `h/${f.elements.slug.value || "…"}`;
+}
+
+$("blockForm").elements.name.addEventListener("input", () => {
+  const f = $("blockForm");
+  if (!blockPick.slugEdited) f.elements.slug.value = slugify(f.elements.name.value);
+  renderBlockPickers();
+});
+$("blockForm").elements.slug.addEventListener("input", () => {
+  const f = $("blockForm");
+  blockPick.slugEdited = true;
+  f.elements.slug.value = f.elements.slug.value.toLowerCase().replace(/[^a-z0-9_]/g, "");
+  renderBlockPickers();
+});
+$("blockForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const f = $("blockForm");
+  $("blockError").textContent = "";
+  $("blockSubmit").disabled = true;
+  send({ t: "create_block", block: {
+    name: f.elements.name.value.trim(), slug: f.elements.slug.value.trim(), about: f.elements.about.value.trim(),
+    bullet: blockPick.bullet, color: blockPick.color, template: blockPick.template,
+  } });
+});
+$("blockCancel").onclick = () => $("blockDialog").close();
+
+function blockCreated(b) {
+  $("blockDialog").close();
+  const link = `${location.origin}/h/${b.slug}`;
+  toast(`🎉 ${b.bullet} ${b.name} is open! Share the link to bring people in.`, 12000, [
+    { label: "Copy link", primary: true, run: () => navigator.clipboard?.writeText(link).then(() => toast("🔗 Link copied")) },
+    { label: "🏪 Find a storefront", run: () => send({ t: "teleport", room: "ave-1" }) },
+  ]);
+}
+
+// ---- storefronts: renting a shop on an avenue ----
+
+// drawLeaseLot draws an empty shop's boarded-up doorway, which you can
+// click to put your block there.
+function drawLeaseLot(l, z) {
+  const b = outdoors() && cityBlocks().find((x) => x.lease === l || (x.lease && x.lease.n === l.n));
+  if (!b) return;
+  z_ = z;
+  const g = blockGeom(b), c = l.pos[0];
+  const q = g.face(c - 0.4, c + 0.4, 0.02, 1.0, 0.01, 0.01);
+  ctx.fillStyle = "#b9a48f";
+  poly(q);
+  ctx.strokeStyle = "#8d7a66";
+  ctx.lineWidth = 2 * z;
+  for (const f of [0.3, 0.55, 0.8]) { // boards across it
+    const a = g.face(c - 0.4, c + 0.4, f - 0.06, f, 0.012, 0.012);
+    ctx.fillStyle = "#d8c3a5";
+    poly(a);
+  }
+  state.lotHits.push({ quad: q, lot: l });
+  const [lx, ly] = pw(c, -0.45, 2.5, z);
+  label(`🏪 For lease · shop ${l.n}`, lx, ly, z * 0.85, "#8d7a66", "#fff");
+}
+
+function lotUnder(px, py) {
+  return (state.lotHits || []).find((h) => pointInPoly(px, py, h.quad))?.lot;
+}
+
+// openLease asks which of your blocks should open a shop on this lot.
+function openLease(lot) {
+  requireAccount(() => {
+    state.lease = { street: state.room.id, lot: lot.n, where: `${plainName(state.room.name)}, shop ${lot.n}` };
+    $("leaseTitle").textContent = `🏪 For lease: ${state.lease.where}`;
+    $("leaseWhere").textContent = "Pick which of your blocks gets a storefront here. Its door will lead straight in, and it stays reachable by subway too.";
+    $("leaseError").textContent = "";
+    $("leaseBlocks").replaceChildren(el("li", "subway-empty", "Loading your blocks…"));
+    if (!$("leaseDialog").open) $("leaseDialog").showModal();
+    send({ t: "my_blocks" });
+  });
+}
+
+function renderLease(blocks) {
+  if (!$("leaseDialog").open || !state.lease) return;
+  const list = $("leaseBlocks");
+  list.replaceChildren();
+  if (!blocks.length) {
+    const empty = el("li", "subway-empty", "You haven't started a block yet. Start one, then come back to open its shop here.");
+    const start = el("button", "", "Start a block");
+    start.type = "button";
+    start.onclick = () => { $("leaseDialog").close(); startBlock(""); };
+    empty.append(start);
+    list.append(empty);
+    return;
+  }
+  for (const b of blocks) {
+    const here = b.lot === state.lease.lot && b.street === plainName(state.room.name);
+    const btn = el("button", "subway-stop");
+    btn.type = "button";
+    btn.disabled = here;
+    const dot = el("span", "line", b.bullet);
+    dot.style.background = b.color;
+    const text = el("span", "stop-text");
+    text.append(el("span", "stop", b.name), el("span", "slug", `h/${b.slug}`));
+    if (b.street) text.append(el("span", "about", here ? "Already here" : `Moves from ${b.street}, shop ${b.lot}`));
+    btn.append(dot, text, el("span", "meta", here ? "" : "Open here"));
+    btn.onclick = () => {
+      $("leaseError").textContent = "";
+      send({ t: "claim_lot", slug: b.slug, street: state.lease.street, lot: state.lease.lot });
+    };
+    const li = el("li");
+    li.append(btn);
+    list.append(li);
+  }
+}
+
+function lotClaimed(b) {
+  $("leaseDialog").close();
+  toast(`🏪 ${b.bullet} ${b.name} now has a storefront on ${b.street}!`, 6000);
+}
+$("leaseClose").onclick = () => $("leaseDialog").close();

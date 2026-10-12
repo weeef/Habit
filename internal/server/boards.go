@@ -188,7 +188,9 @@ func (sv *Server) storeFailed(s *session, op string, err error) {
 // ---- reading ----
 
 func (sv *Server) handleBoard(ctx context.Context, s *session, roomID string, page int, sort store.ThreadSort) {
-	r, ok := sv.rooms[roomID] // the room map never changes after New
+	sv.mu.Lock()
+	r, ok := sv.rooms[roomID] // the board of a room you're in, so it's loaded
+	sv.mu.Unlock()
 	if !ok || page < 0 || page > maxBoardPage {
 		return
 	}

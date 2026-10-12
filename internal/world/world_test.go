@@ -124,3 +124,25 @@ func TestFindPathDiagonal(t *testing.T) {
 		t.Fatalf("want to go round the corner, got %v", p)
 	}
 }
+
+func TestBlockTemplates(t *testing.T) {
+	p := plaza()
+	lookup := func(id string) *Room {
+		if id == "plaza" {
+			return p
+		}
+		return nil
+	}
+	for _, tp := range Templates {
+		r := BlockRoom("knitting", "🧶 Knitting", tp.ID)
+		if err := ValidateRoom(r, lookup); err != nil {
+			t.Errorf("template %s: %v", tp.ID, err)
+		}
+		if r.PropByID("board") == nil {
+			t.Errorf("template %s has no board", tp.ID)
+		}
+		if FindPath(r, r.Spawn, r.Doors[0].At) == nil {
+			t.Errorf("template %s: can't walk from the spawn to the door", tp.ID)
+		}
+	}
+}

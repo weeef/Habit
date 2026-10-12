@@ -293,11 +293,134 @@ dialog::backdrop { background: rgb(20 12 40 / 0.4); -webkit-backdrop-filter: blu
 .subway-stop:disabled { opacity: 0.55; cursor: default; }
 .subway-stop .line { width: 30px; height: 30px; border-radius: 50%; color: #fff; display: grid; place-items: center; font-size: 15px; }
 .subway-stop .stop { font-weight: 900; }
-.subway-stop .meta { font-size: 12px; color: var(--muted); }
+.subway-stop .meta { font-size: 12px; color: var(--muted); text-align: right; }
+.subway-stop .stop-text { display: grid; min-width: 0; }
+.subway-stop .about { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.subway-stop .slug { font-size: 12px; color: var(--muted); font-weight: 700; }
+.subway-stop .tag { font-size: 11px; font-weight: 800; border-radius: 6px; padding: 0 5px; margin-left: 6px; background: var(--line); color: var(--ink); }
+.subway-dialog { width: min(520px, calc(100vw - 32px)); max-width: none; }
+.subway-dialog .subway-lines { max-height: min(52dvh, 460px); overflow-y: auto; padding: 2px; }
+.subway-search { display: flex; gap: 8px; }
+.subway-search input { flex: 1; min-width: 0; }
+.subway-empty { color: var(--muted); font-size: 14px; padding: 8px 4px; display: grid; gap: 8px; justify-items: start; }
+
+.small-print { font-size: 12.5px; margin: 0; }
+#leaseDialog { width: min(460px, calc(100vw - 32px)); max-width: none; }
+
+/* ---- start a block ---- */
+#blockDialog { width: min(480px, calc(100vw - 32px)); max-width: none; }
+.block-preview {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 16px;
+  background: var(--enamel); color: var(--sign-ink); position: relative;
+}
+.block-preview::before {
+  content: ""; position: absolute; left: 12px; right: 12px; top: 5px; height: 2px; background: rgb(255 255 255 / 0.85); border-radius: 2px;
+}
+.block-preview .line { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-size: 18px; flex: none; }
+.block-preview .muted { color: var(--sign-muted); font-size: 13px; }
+.slug-field { display: flex; align-items: center; gap: 2px; }
+.slug-field > span { font-weight: 900; color: var(--muted); }
+.slug-field input { flex: 1; min-width: 0; }
+.picker { border: 0; padding: 0; margin: 0; }
+.picker legend { font-weight: 800; font-size: 14px; padding: 0; margin-bottom: 6px; }
+.pick-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.pick-grid button {
+  width: 36px; height: 36px; padding: 0; border-radius: 50%; font-size: 18px;
+  background: transparent; border: 2px solid var(--line); color: var(--ink); box-shadow: none;
+}
+.pick-grid button[aria-checked="true"] { border-color: var(--ink); box-shadow: 0 0 0 2px var(--taxi); }
+.pick-grid button.color { border-color: transparent; }
+.template-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.template-grid button {
+  display: grid; gap: 2px; text-align: left; padding: 8px 12px; border-radius: 14px; font-weight: 800;
+  background: transparent; color: var(--ink); border: 2px solid var(--line); box-shadow: none;
+}
+.template-grid button span { font-weight: 600; font-size: 12px; color: var(--muted); }
+.template-grid button[aria-checked="true"] { border-color: var(--taxi); background: rgb(255 205 56 / 0.12); }
 
 /* Toasts float over everything (inside a dialog when one is open). */
-.toasts { position: fixed; left: 50%; top: 76px; transform: translateX(-50%); display: grid; gap: 6px; z-index: 10; }
+.toasts { position: fixed; left: 50%; top: 76px; transform: translateX(-50%); display: grid; gap: 6px; z-index: 10; justify-items: center; }
 .toast { padding: 9px 16px; border-radius: 999px; font-size: 14px; max-width: calc(100vw - 32px); }
+.toast.has-actions {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;
+  padding: 8px 8px 8px 16px; border-radius: 18px; font-weight: 700;
+}
+.toast-actions { display: flex; gap: 6px; }
+.toast-actions button { padding: 6px 12px; font-size: 13px; }
+.toast-actions button.ghost { background: transparent; color: var(--sign-ink); border: 2px solid var(--sign-line); padding: 4px 10px; }
+
+/* ---- the left-hand stack: first stops, then today ---- */
+.left-stack {
+  position: absolute; left: 12px; top: 124px; z-index: 4; width: 260px;
+  display: flex; flex-direction: column; gap: 10px; pointer-events: none;
+}
+.left-stack > * { pointer-events: auto; }
+body.list-view .left-stack { display: none; }
+
+/* ---- first stops: a starter quest, styled like a line's stop list ---- */
+.quest { padding: 14px 12px 10px; border-radius: 16px; }
+.quest-head { display: flex; align-items: center; justify-content: space-between; margin: 0 4px 6px; }
+.quest h2 { margin: 0; font-size: 15px; font-weight: 900; }
+.quest-close {
+  background: transparent; color: var(--sign-muted); padding: 2px 6px; font-size: 13px; box-shadow: none;
+}
+.quest-steps { list-style: none; margin: 0; padding: 0; position: relative; }
+/* The line joining the stops. */
+.quest-steps::before {
+  content: ""; position: absolute; left: 19px; top: 18px; bottom: 18px; width: 3px;
+  background: var(--pink); border-radius: 2px;
+}
+.quest-step {
+  position: relative; display: grid; grid-template-columns: 30px 1fr; column-gap: 10px; align-items: center;
+  width: 100%; padding: 6px 6px; border-radius: 12px; text-align: left;
+  background: transparent; color: var(--sign-ink); box-shadow: none;
+}
+.quest-step:hover:not(:disabled) { background: rgb(255 255 255 / 0.08); }
+.quest-dot {
+  grid-row: span 2; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--enamel); box-shadow: inset 0 0 0 3px var(--pink); font-size: 15px;
+}
+.quest-text { font-weight: 800; font-size: 14px; }
+.quest-hint { font-size: 12px; color: var(--sign-muted); }
+.quest-step.done { opacity: 1; cursor: default; }
+.quest-step.done .quest-dot { background: var(--pink); color: #fff; font-weight: 900; }
+.quest-step.done .quest-text { text-decoration: line-through; text-decoration-thickness: 2px; color: var(--sign-muted); }
+
+/* ---- today in the plaza ---- */
+.today { border-radius: 16px; padding: 4px 6px 6px; }
+.today-head {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 10px 8px 8px; background: transparent; color: var(--sign-ink); box-shadow: none; text-align: left;
+}
+.today-head:hover { box-shadow: none; }
+.today-title { font-size: 15px; font-weight: 900; }
+.today-mini { margin-left: auto; font-size: 12px; color: var(--sign-muted); font-weight: 700; }
+.today-caret { color: var(--sign-muted); transition: transform 0.15s; }
+.today-head[aria-expanded="false"] .today-caret { transform: rotate(-90deg); }
+.today-body { display: grid; gap: 2px; }
+.today-head[aria-expanded="false"] + .today-body { display: none; }
+.today-row {
+  display: grid; grid-template-columns: 26px 1fr; column-gap: 8px; row-gap: 2px; align-items: center;
+  width: 100%; padding: 7px 8px; border-radius: 12px; text-align: left;
+  background: transparent; color: var(--sign-ink); box-shadow: none; font-weight: 600;
+}
+.today-row:hover { background: rgb(255 255 255 / 0.08); box-shadow: none; }
+.today-icon { grid-row: span 3; align-self: start; font-size: 17px; line-height: 1.4; }
+.today-label { font-size: 12px; font-weight: 800; color: var(--sign-muted); }
+.today-text { font-size: 13.5px; line-height: 1.3; }
+.today-bar { display: block; height: 7px; border-radius: 99px; background: rgb(255 255 255 / 0.14); overflow: hidden; margin: 3px 0 2px; }
+.today-bar i { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--taxi); transition: width 0.4s; }
+.today-row.full .today-bar i { background: linear-gradient(90deg, var(--pink), var(--taxi), #6fd3ff); }
+.today-row.live { background: rgb(255 205 56 / 0.14); }
+.today-row.live .today-label { color: var(--taxi); }
+
+.missed { margin: 0 2px 6px; padding: 8px 10px; border-radius: 12px; background: rgb(255 255 255 / 0.07); }
+.missed-head { display: flex; align-items: center; justify-content: space-between; font-size: 13.5px; }
+.missed-list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 3px; font-size: 13px; color: var(--sign-muted); }
+.missed-list button {
+  background: transparent; color: var(--sign-ink); box-shadow: none; padding: 2px 0; font-weight: 700; font-size: 13px;
+  text-align: left; border-radius: 6px; text-decoration: underline; text-decoration-color: var(--sign-line); text-underline-offset: 3px;
+}
 
 /* ---- list view: the chat on its own, no world ---- */
 body.list-view .stage { display: none; }
@@ -317,6 +440,21 @@ body.chat-hidden .side { display: none; }
   .sign-chip { padding: 6px 10px; font-size: 13px; }
   #viewToggle { display: none; }
   .hint { display: none; }
+  .left-stack {
+    top: auto; bottom: calc(44dvh + 64px); left: 8px; width: min(240px, calc(100vw - 16px)); gap: 6px;
+    max-height: calc(56dvh - 140px); overflow-y: auto; overscroll-behavior: contain;
+  }
+  body.chat-hidden .left-stack { max-height: calc(100dvh - 140px); }
+  body.chat-hidden .left-stack { bottom: 64px; }
+  .today-mini { white-space: nowrap; }
+  .quest { padding: 8px 8px 4px; }
+  .today-head { padding: 7px 6px 6px; }
+  .today-title { font-size: 13px; }
+  .quest h2 { font-size: 13px; }
+  .quest-hint { display: none; }
+  .quest-step { grid-template-columns: 26px 1fr; padding: 3px 4px; }
+  .quest-dot { width: 26px; height: 26px; font-size: 13px; grid-row: auto; }
+  .quest-steps::before { left: 16px; top: 14px; bottom: 14px; }
   .side { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; height: 44dvh; }
   .emotes { left: 50%; bottom: calc(44dvh + 18px); }
   body.chat-hidden .emotes { bottom: 14px; }

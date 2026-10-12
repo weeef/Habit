@@ -36,6 +36,7 @@ type Door struct {
 	Target   string // target room ID
 	TargetAt Point  // where the avatar appears in the target room
 	Label    string
+	Color    string // a block's storefront colour, #rrggbb
 }
 
 // Prop kinds. Benches are seats: you can walk onto them (as the last step)
@@ -107,7 +108,12 @@ type Room struct {
 	Doors    []Door
 	Props    []Prop
 	Capacity int
+	Lots     []Point // avenues: shop lots a block can rent for a storefront door
 }
+
+// AtSpawn as a door's TargetAt means "wherever the room's spawn is", for
+// doors into rooms that are built later (blocks).
+var AtSpawn = Point{-1, -1}
 
 func (r *Room) W() int { return len(r.Rows[0]) }
 func (r *Room) H() int { return len(r.Rows) }
@@ -185,42 +191,50 @@ func Validate(rooms []*Room) error {
 		byID[r.ID] = r
 	}
 	for _, r := range rooms {
-		if len(r.Rows) == 0 {
-			return fmt.Errorf("room %q has no rows", r.ID)
+		if err := ValidateRoom(r, func(id string) *Room { return byID[id] }); err != nil {
+			return err
 		}
-		if !r.Standable(r.Spawn) {
-			return fmt.Errorf("room %q: spawn %v is not plain floor", r.ID, r.Spawn)
+	}
+	return nil
+}
+
+// ValidateRoom checks one room, looking up the rooms its doors lead to.
+func ValidateRoom(r *Room, lookup func(id string) *Room) error {
+	if len(r.Rows) == 0 {
+		return fmt.Errorf("room %q has no rows", r.ID)
+	}
+	if !r.Standable(r.Spawn) {
+		return fmt.Errorf("room %q: spawn %v is not plain floor", r.ID, r.Spawn)
+	}
+	for _, d := range r.Doors {
+		if !r.Floor(d.At) || r.PropAt(d.At) != nil {
+			return fmt.Errorf("room %q: door at %v is not on clear floor", r.ID, d.At)
 		}
-		for _, d := range r.Doors {
-			if !r.Floor(d.At) || r.PropAt(d.At) != nil {
-				return fmt.Errorf("room %q: door at %v is not on clear floor", r.ID, d.At)
+		t := lookup(d.Target)
+		if t == nil {
+			return fmt.Errorf("room %q: door targets unknown room %q", r.ID, d.Target)
+		}
+		if !t.Standable(d.TargetAt) {
+			return fmt.Errorf("room %q: door lands on %v in %q, which is not plain floor", r.ID, d.TargetAt, t.ID)
+		}
+	}
+	ids := map[string]bool{}
+	for i := range r.Props {
+		p := &r.Props[i]
+		if p.ID == "" || ids[p.ID] {
+			return fmt.Errorf("room %q: prop IDs must be set and unique (%q)", r.ID, p.ID)
+		}
+		ids[p.ID] = true
+		for _, q := range p.Tiles() {
+			if !r.Floor(q) {
+				return fmt.Errorf("room %q: prop %q at %v is off the floor", r.ID, p.ID, q)
 			}
-			t, ok := byID[d.Target]
-			if !ok {
-				return fmt.Errorf("room %q: door targets unknown room %q", r.ID, d.Target)
-			}
-			if !t.Standable(d.TargetAt) {
-				return fmt.Errorf("room %q: door lands on %v in %q, which is not plain floor", r.ID, d.TargetAt, t.ID)
+			if o := r.PropAt(q); o != p {
+				return fmt.Errorf("room %q: props %q and %q overlap at %v", r.ID, p.ID, o.ID, q)
 			}
 		}
-		ids := map[string]bool{}
-		for i := range r.Props {
-			p := &r.Props[i]
-			if p.ID == "" || ids[p.ID] {
-				return fmt.Errorf("room %q: prop IDs must be set and unique (%q)", r.ID, p.ID)
-			}
-			ids[p.ID] = true
-			for _, q := range p.Tiles() {
-				if !r.Floor(q) {
-					return fmt.Errorf("room %q: prop %q at %v is off the floor", r.ID, p.ID, q)
-				}
-				if o := r.PropAt(q); o != p {
-					return fmt.Errorf("room %q: props %q and %q overlap at %v", r.ID, p.ID, o.ID, q)
-				}
-			}
-			if p.Seat() && p.Dir == (Point{}) {
-				return fmt.Errorf("room %q: bench %q needs a direction", r.ID, p.ID)
-			}
+		if p.Seat() && p.Dir == (Point{}) {
+			return fmt.Errorf("room %q: bench %q needs a direction", r.ID, p.ID)
 		}
 	}
 	return nil

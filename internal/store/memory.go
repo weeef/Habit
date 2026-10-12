@@ -23,11 +23,13 @@ type Memory struct {
 	messages map[string][]Message
 	secret   []byte
 
-	threads map[int64]*Thread
-	replies map[int64][]Reply
-	notes   []Notification // oldest first
-	lastID  int64          // shared by threads, replies and notifications
-	votes   map[voteKey]int
+	threads  map[int64]*Thread
+	replies  map[int64][]Reply
+	notes    []Notification // oldest first
+	lastID   int64          // shared by threads, replies and notifications
+	votes    map[voteKey]int
+	counters map[string]int64
+	blocks   map[string]*Block // lower-case slug → block
 }
 
 type voteKey struct {
@@ -69,6 +71,142 @@ func (m *Memory) AccountByUsername(_ context.Context, username string) (*Account
 	}
 	c := *a
 	return &c, nil
+}
+
+func (m *Memory) AddWelcome(_ context.Context, accountID string) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a := m.byID[accountID]
+	if a == nil {
+		return 0, ErrNotFound
+	}
+	a.Welcomes++
+	return a.Welcomes, nil
+}
+
+func (m *Memory) CreateBlock(_ context.Context, b *Block) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := strings.ToLower(b.Slug)
+	if _, taken := m.blocks[key]; taken {
+		return ErrNameTaken
+	}
+	if m.blocks == nil {
+		m.blocks = map[string]*Block{}
+	}
+	c := *b
+	m.blocks[key] = &c
+	return nil
+}
+
+func (m *Memory) BlockBySlug(_ context.Context, slug string) (*Block, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	b := m.blocks[strings.ToLower(slug)]
+	if b == nil {
+		return nil, ErrNotFound
+	}
+	c := *b
+	return &c, nil
+}
+
+func (m *Memory) SearchBlocks(_ context.Context, query string, limit int) ([]Block, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	q := strings.ToLower(query)
+	var out []Block
+	for _, b := range m.blocks {
+		if strings.Contains(strings.ToLower(b.Slug), q) || strings.Contains(strings.ToLower(b.Name), q) {
+			out = append(out, *b)
+		}
+	}
+	slices.SortFunc(out, func(a, b Block) int {
+		if a.Official != b.Official {
+			if a.Official {
+				return -1
+			}
+			return 1
+		}
+		return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
+	return out[:min(len(out), limit)], nil
+}
+
+func (m *Memory) BlocksByOwner(_ context.Context, ownerID string) ([]Block, error) {
+	return m.blocksWhere(func(b *Block) bool { return b.OwnerID == ownerID }), nil
+}
+
+func (m *Memory) BlocksWithLots(context.Context) ([]Block, error) {
+	return m.blocksWhere(func(b *Block) bool { return b.Lot != 0 }), nil
+}
+
+func (m *Memory) blocksWhere(keep func(*Block) bool) []Block {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []Block
+	for _, b := range m.blocks {
+		if keep(b) {
+			out = append(out, *b)
+		}
+	}
+	slices.SortFunc(out, func(a, b Block) int { return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
+	return out
+}
+
+func (m *Memory) SetBlockLot(_ context.Context, slug, street string, lot int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	b := m.blocks[strings.ToLower(slug)]
+	if b == nil {
+		return ErrNotFound
+	}
+	if lot != 0 {
+		for _, o := range m.blocks {
+			if o != b && o.Street == street && o.Lot == lot {
+				return ErrNameTaken
+			}
+		}
+	}
+	b.Street, b.Lot = street, lot
+	return nil
+}
+
+func (m *Memory) BlocksStartedSince(_ context.Context, ownerID string, since time.Time) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, b := range m.blocks {
+		if b.OwnerID == ownerID && b.CreatedAt.After(since) {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (m *Memory) Counter(_ context.Context, key string) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.counters[key], nil
+}
+
+func (m *Memory) AddCounter(_ context.Context, key string, delta int64) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.counters == nil {
+		m.counters = map[string]int64{}
+	}
+	m.counters[key] += delta
+	return m.counters[key], nil
+}
+
+func (m *Memory) SetCounter(_ context.Context, key string, value int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.counters == nil {
+		m.counters = map[string]int64{}
+	}
+	m.counters[key] = value
+	return nil
 }
 
 func (m *Memory) CreateSession(_ context.Context, tokenHash []byte, accountID string, _ time.Time) error {
