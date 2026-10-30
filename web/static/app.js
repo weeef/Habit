@@ -863,7 +863,7 @@ function doorAt(x, y) {
 // screen; big ones (like the plaza) are shown closer up, and the camera
 // glides after you.
 function layout(now = performance.now()) {
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = renderDpr();
   const w = canvas.clientWidth, h = canvas.clientHeight;
   if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
     canvas.width = Math.round(w * dpr);
@@ -993,6 +993,7 @@ function diamond(sx, sy, z) {
 let lastDrawError = 0;
 function draw(now) {
   requestAnimationFrame(draw);
+  governQuality(now);
   try {
     drawFrame(now);
   } catch (e) {
@@ -1090,7 +1091,7 @@ function drawFrame(now) {
   // Whoever is walking or turning is drawn live, at their exact angle and
   // stride, up to a budget per frame (you always); everyone else uses
   // pre-drawn frames, which keeps a packed room fast.
-  let liveLeft = LIVE_AVATARS;
+  let liveLeft = quality.live;
   state.spritesLeft = NEW_SPRITES_PER_FRAME;
   for (const a of state.avatars.values()) {
     const p = avatarPos(a, now);
@@ -1131,6 +1132,47 @@ function drawFrame(now) {
   for (const a of state.avatars.values()) {
     const p = avatarPos(a, now);
     if (visible(p.x, p.y, 300)) drawBubbles(a, p, now, z);
+  }
+}
+
+// ---- quality: keep slow devices smooth without changing fast ones ----
+//
+// Fast devices always get everything. If frames start taking too long, the
+// world steps down one notch at a time: fewer walkers drawn live (the rest
+// use their pre-drawn walking frames, which look nearly the same), then a
+// slightly lower resolution on very sharp screens. When it's smooth again
+// it steps back up, waiting longer each time a step up didn't hold.
+const QUALITY = [
+  { live: 6, dprCap: Infinity }, // at most this many moving people drawn live a frame
+  { live: 2, dprCap: Infinity },
+  { live: 0, dprCap: Infinity }, // only you are drawn live
+  { live: 0, dprCap: 2 },
+  { live: 0, dprCap: 1.5 },
+];
+const quality = { level: 0, live: QUALITY[0].live, dprCap: Infinity, avg: 0, last: 0, changedAt: 0, lastDrop: -1e9, backoff: 15000 };
+
+function renderDpr() { return Math.min(window.devicePixelRatio || 1, quality.dprCap); }
+
+function setQuality(level, now) {
+  quality.level = level;
+  Object.assign(quality, QUALITY[level]);
+  quality.changedAt = now;
+}
+
+function governQuality(now) {
+  const dt = now - quality.last;
+  quality.last = now;
+  // Skip hidden tabs and the first frame after one (rAF pauses there).
+  if (document.hidden || !state.room || dt <= 0 || dt > 500) return;
+  quality.avg = quality.avg ? quality.avg * 0.95 + dt * 0.05 : dt;
+  if (now - quality.changedAt < 2500) return; // let the last change settle
+  if (quality.avg > 25 && quality.level < QUALITY.length - 1) {
+    // A step up that didn't hold: wait twice as long before the next try.
+    if (now - quality.lastDrop < 60000) quality.backoff = Math.min(quality.backoff * 2, 240000);
+    quality.lastDrop = now;
+    setQuality(quality.level + 1, now);
+  } else if (quality.avg < 18 && quality.level > 0 && now - quality.lastDrop > quality.backoff) {
+    setQuality(quality.level - 1, now);
   }
 }
 
@@ -1175,7 +1217,7 @@ function worldLayer(key, extent, z, draw) {
   // Big layers (the 500-person plaza) use a lower resolution on very sharp
   // screens, to keep each under ~16 million pixels.
   const area = Math.max(1, (extent[2] - extent[0]) * (extent[3] - extent[1]));
-  const dpr = Math.min(window.devicePixelRatio || 1, Math.sqrt(16e6 / area));
+  const dpr = Math.min(renderDpr(), Math.sqrt(16e6 / area));
   const cacheKey = `${key}|${z.toFixed(3)}|${dpr}`;
   let L = layerCache.get(cacheKey);
   if (!L) {
@@ -1591,23 +1633,48 @@ function drawBillboards(z, now, lit) {
     const ux = (p1[0] - p0[0]) / 100 * (reverse ? -1 : 1), uy = (p1[1] - p0[1]) / 100 * (reverse ? -1 : 1);
     const vx = (p0[0] - p3[0]) / 100, vy = (p0[1] - p3[1]) / 100;
     const [ox, oy] = reverse ? p2 : p3;
+    // The glowing words are drawn once into a little canvas (per sign, hue
+    // and size) and placed each frame; blurring text live every frame was
+    // one of the most expensive things on screen.
+    const dpr = renderDpr();
+    const step = (n) => Math.max(8, Math.round(n / 8) * 8);
+    const wpx = step(Math.hypot(ux, uy) * 100 * dpr), hpx = step(Math.hypot(vx, vy) * 100 * dpr);
+    const img = signWords(b.sign, Math.round(hue / 4) * 4, Math.round(60 + lit * 10), wpx, hpx);
     const words = (alpha) => {
       ctx.save();
-      const dpr = window.devicePixelRatio || 1;
       ctx.setTransform(dpr * ux, dpr * uy, dpr * vx, dpr * vy, dpr * ox, dpr * oy);
       ctx.globalAlpha = flick * alpha;
-      ctx.fillStyle = color;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 8;
-      ctx.font = `900 46px ${FONT}`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(b.sign, 50, 52, 92);
+      ctx.drawImage(img, 0, 0, 100, 100);
       ctx.restore();
     };
     words(1);
     state.glows.push({ kind: "neon", quad: q, color, words }); // lit again after dark
   }
+}
+
+// signWords draws a sign's glowing words into a w×h canvas standing for the
+// sign's 100×100 box, and keeps it for reuse.
+const signWordsCache = new Map();
+function signWords(text, hue, light, w, h) {
+  const key = `${text}|${hue}|${light}|${w}|${h}`;
+  let c = signWordsCache.get(key);
+  if (c) return c;
+  if (signWordsCache.size > 160) signWordsCache.delete(signWordsCache.keys().next().value);
+  c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const g = c.getContext("2d");
+  const color = `hsl(${hue} 95% ${light}%)`;
+  g.setTransform(w / 100, 0, 0, h / 100, 0, 0);
+  g.fillStyle = color;
+  g.shadowColor = color;
+  g.shadowBlur = 8;
+  g.font = `900 46px ${FONT}`;
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillText(text, 50, 52, 92);
+  signWordsCache.set(key, c);
+  return c;
 }
 
 // ---- the street in front: road, crossing, and traffic ----
@@ -2479,7 +2546,7 @@ function basisAt(ox, oy, angle, vs, z) {
   const hw = (TW / 2) * z * vs, hh = (TH / 2) * z * vs, zp = ZPX * z * vs;
   const ux = (R[0] - R[1]) * hw, uy = (R[0] + R[1]) * hh;
   const vx = (F[0] - F[1]) * hw, vy = (F[0] + F[1]) * hh;
-  return { F, R, P: (a, b, c) => [ox + a * ux + b * vx, oy + a * uy + b * vy - c * zp] };
+  return { F, R, ux, uy, vx, vy, zp, P: (a, b, c) => [ox + a * ux + b * vx, oy + a * uy + b * vy - c * zp] };
 }
 
 // basis is basisAt for a model standing at world tile (wx, wy), raised wz
@@ -2499,8 +2566,19 @@ function drawModel(model, wx, wy, wz, angle, vs, z, pose = {}, closedEyes = fals
   drawModelAt(model, o.sx, o.sy - wz * ZPX * z, angle, vs, z, pose, closedEyes);
 }
 
+// shadeFor is shade() looked up by colour, then by brightness, so drawing a
+// face doesn't build a string key (drawModelAt asks once per face).
+const shadeByColor = new Map();
+function shadeFor(c, f) {
+  let m = shadeByColor.get(c);
+  if (!m) shadeByColor.set(c, (m = new Map()));
+  let out = m.get(f);
+  if (out === undefined) m.set(f, (out = shade(c, f)));
+  return out;
+}
+
 function drawModelAt(model, ox, oy, angle, vs, z, pose = {}, closedEyes = false) {
-  const { F, R, P } = basisAt(ox, oy, angle, vs, z);
+  const { F, R, ux, uy, vx, vy, zp } = basisAt(ox, oy, angle, vs, z);
   // Which side faces point at the camera, and how brightly they're lit.
   const sides = FACE_N.map(([a, b]) => {
     const nx = a * R[0] + b * F[0], ny = a * R[1] + b * F[1];
@@ -2516,38 +2594,51 @@ function drawModelAt(model, ox, oy, angle, vs, z, pose = {}, closedEyes = false)
 
   ctx.lineWidth = 0.6;
   ctx.lineJoin = "round";
+  // Faces are drawn back to front. A run of faces in the same colour goes
+  // into one path and is filled and stroked once, which looks the same (they
+  // are opaque) but is far fewer canvas calls than one fill per face.
+  let open = null;
+  const flush = () => {
+    if (open === null) return;
+    ctx.fill();
+    ctx.stroke(); // hides hairline seams between faces
+    open = null;
+  };
+  // face adds the quad with corners (a0,b0,c0) (a1,b1,c1) (a2,b2,c2) (a3,b3,c3).
+  const face = (col, a0, b0, c0, a1, b1, c1, a2, b2, c2, a3, b3, c3) => {
+    if (col !== open) {
+      flush();
+      ctx.fillStyle = col;
+      ctx.strokeStyle = col;
+      ctx.beginPath();
+      open = col;
+    }
+    ctx.moveTo(ox + a0 * ux + b0 * vx, oy + a0 * uy + b0 * vy - c0 * zp);
+    ctx.lineTo(ox + a1 * ux + b1 * vx, oy + a1 * uy + b1 * vy - c1 * zp);
+    ctx.lineTo(ox + a2 * ux + b2 * vx, oy + a2 * uy + b2 * vy - c2 * zp);
+    ctx.lineTo(ox + a3 * ux + b3 * vx, oy + a3 * uy + b3 * vy - c3 * zp);
+    ctx.closePath();
+  };
   for (const { q, u, v, k } of items) {
     let c = q.c;
     if (q.tag === "eye" && closedEyes) c = q.k === 10 ? "#2e2135" : model.skin;
     for (const fi of q.faces) {
-      let quad, f;
       if (fi === 4) {
-        quad = [P(u, v, k + 1), P(u + 1, v, k + 1), P(u + 1, v + 1, k + 1), P(u, v + 1, k + 1)];
-        f = 1.04;
-      } else {
-        if (!sides[fi].vis) continue;
-        f = sides[fi].f;
-        if (fi < 2) {
-          const a = fi === 0 ? u + 1 : u;
-          quad = [P(a, v, k), P(a, v + 1, k), P(a, v + 1, k + 1), P(a, v, k + 1)];
-        } else {
-          const b = fi === 2 ? v + 1 : v;
-          quad = [P(u, b, k), P(u + 1, b, k), P(u + 1, b, k + 1), P(u, b, k + 1)];
-        }
+        face(shadeFor(c, 1.04), u, v, k + 1, u + 1, v, k + 1, u + 1, v + 1, k + 1, u, v + 1, k + 1);
+        continue;
       }
-      const col = shade(c, f);
-      ctx.fillStyle = col;
-      ctx.strokeStyle = col; // hides hairline seams between faces
-      ctx.beginPath();
-      ctx.moveTo(quad[0][0], quad[0][1]);
-      ctx.lineTo(quad[1][0], quad[1][1]);
-      ctx.lineTo(quad[2][0], quad[2][1]);
-      ctx.lineTo(quad[3][0], quad[3][1]);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
+      const side = sides[fi];
+      if (!side.vis) continue;
+      if (fi < 2) {
+        const a = fi === 0 ? u + 1 : u;
+        face(shadeFor(c, side.f), a, v, k, a, v + 1, k, a, v + 1, k + 1, a, v, k + 1);
+      } else {
+        const b = fi === 2 ? v + 1 : v;
+        face(shadeFor(c, side.f), u, b, k, u + 1, b, k, u + 1, b, k + 1, u, b, k + 1);
+      }
     }
   }
+  flush();
 }
 
 // ---- sprites: props that don't animate are drawn once and reused ----
@@ -2556,7 +2647,7 @@ const spriteCache = new Map();
 const CORNERS = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]];
 
 function sprite(key, model, angle, vs, z) {
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = renderDpr();
   const cacheKey = `${key}|${angle.toFixed(3)}|${vs}|${z.toFixed(3)}|${dpr}`;
   let s = spriteCache.get(cacheKey);
   if (s) return s;
@@ -2568,7 +2659,7 @@ function sprite(key, model, angle, vs, z) {
 
 // makeSprite draws a model (in a pose) into its own little canvas.
 function makeSprite(model, angle, vs, z, pose = {}, closedEyes = false) {
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = renderDpr();
   const { P } = basisAt(0, 0, angle, vs, z);
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const q of model.voxels) {
@@ -2755,6 +2846,24 @@ function drawPondShimmer(z, now) {
   ctx.globalAlpha = 1;
 }
 
+// drawBoat draws rowboat i from pre-drawn frames: 72 headings (5° apart)
+// and two oar strokes, so the boats glide round without being rebuilt
+// voxel by voxel every frame.
+const BOAT_TURN_STEP = Math.PI / 36;
+const boatSprites = new Map();
+function drawBoat(i, x, y, bob, angle, oars, z) {
+  const step = ((Math.round(angle / BOAT_TURN_STEP) % 72) + 72) % 72;
+  const key = `${i}|${step}|${oars}|${z.toFixed(3)}|${renderDpr()}`;
+  let sp = boatSprites.get(key);
+  if (!sp) {
+    if (boatSprites.size > 600) boatSprites.clear();
+    sp = makeSprite(rowboatModel(i), step * BOAT_TURN_STEP, 0.07, z, { oars: { dk: oars } });
+    boatSprites.set(key, sp);
+  }
+  const { sx, sy } = toScreen(x, y);
+  ctx.drawImage(sp.canvas, sx - sp.ax, sy - bob * ZPX * z - sp.ay, sp.w, sp.h);
+}
+
 // parkDrawables adds the pond's rowboats and the bridge's railings to the
 // frame's depth-sorted drawables.
 function parkDrawables(drawables, z, now) {
@@ -2766,7 +2875,8 @@ function parkDrawables(drawables, z, now) {
     const dir = i ? -1 : 1;
     const angle = Math.atan2(b.ry * Math.cos(t) * dir, -b.rx * Math.sin(t) * dir);
     const bob = Math.sin(now / 500 + i) * 0.02 - WATER_DROP / ZPX;
-    drawables.push({ depth: x + y, draw: () => drawModel(rowboatModel(i), x, y, bob, angle, 0.07, z, { oars: { dk: Math.sin(now / 300 + i) > 0 ? 1 : 0 } }) });
+    const oars = Math.sin(now / 300 + i) > 0 ? 1 : 0;
+    drawables.push({ depth: x + y, draw: () => drawBoat(i, x, y, bob, angle, oars, z) });
   });
   if (!bridge.length) return;
   const x0 = Math.min(...bridge.map((b) => b[0])) - 0.5, x1 = Math.max(...bridge.map((b) => b[0])) + 0.5;
@@ -3696,13 +3806,12 @@ function drawAvatar(a, p, now, z) {
 const AVATAR_TURN_STEP = Math.PI / 12; // 24 directions
 const WALK_FRAMES = 12;
 const GAIT_PER_TILE = 2.6; // radians of stride per tile walked
-const LIVE_AVATARS = 6;   // at most this many moving people drawn live a frame
 const NEW_SPRITES_PER_FRAME = 6;
 const AVATAR_SPRITE_CAP = 2500;
 const avatarSprites = new Map();
 
 function avatarSprite(model, style, angle, poseKey, pose, closed, z, fallback) {
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = renderDpr();
   const s = style || {};
   const key = `${s.skin}.${s.hair}.${s.outfit}.${s.accessory}|${Math.round(angle / AVATAR_TURN_STEP)}|${poseKey}|${closed ? 1 : 0}|${z.toFixed(3)}|${dpr}`;
   let sp = avatarSprites.get(key);

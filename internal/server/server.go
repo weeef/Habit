@@ -49,6 +49,7 @@ type Server struct {
 	store    store.Store
 	accounts *Accounts
 	secret   []byte
+	static   staticFiles // the web client, or nil
 
 	mu         sync.Mutex
 	rooms      map[string]*room
@@ -134,6 +135,11 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		secret:   secret,
 		rooms:    map[string]*room{},
 	}
+	if opts.Static != nil {
+		if sv.static, err = loadStatic(opts.Static); err != nil {
+			return nil, fmt.Errorf("loading web client: %w", err)
+		}
+	}
 	for _, def := range opts.Rooms {
 		saved, err := opts.Store.RecentMessages(ctx, def.ID, chatHistoryLen)
 		if err != nil {
@@ -157,13 +163,8 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 func (sv *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", sv.serveWS)
-	if sv.opts.Static != nil {
-		mux.Handle("/", http.FileServerFS(sv.opts.Static))
-		// Block links, like /h/gaming, open the same page; it then joins
-		// that block.
-		mux.HandleFunc("/h/", func(w http.ResponseWriter, r *http.Request) {
-			http.ServeFileFS(w, r, sv.opts.Static, "index.html")
-		})
+	if sv.static != nil {
+		mux.Handle("/", sv.static)
 	}
 	return mux
 }
