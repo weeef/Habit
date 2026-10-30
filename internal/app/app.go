@@ -49,7 +49,18 @@ func Main() {
 	}
 	defer st.Close()
 
-	sv, err := server.New(ctx, server.Options{Static: web.Static, Store: st})
+	opts := server.Options{Static: web.Static, Store: st}
+	// HABIT_HIDE_CHAT_BEFORE (e.g. 2026-10-30T01:15:00Z) hides older saved
+	// chat without deleting it; unset it to bring the chat back.
+	if v := os.Getenv("HABIT_HIDE_CHAT_BEFORE"); v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			log.Fatalf("HABIT_HIDE_CHAT_BEFORE: %v", err)
+		}
+		opts.HideChatBefore = t
+		log.Printf("Hiding chat sent before %s.", t.Format(time.RFC3339))
+	}
+	sv, err := server.New(ctx, opts)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -580,3 +580,22 @@ func sameStyle(got any, want map[string]any) bool {
 	}
 	return true
 }
+
+func TestHideChatBefore(t *testing.T) {
+	st := store.NewMemory()
+	old := store.Message{Room: "plaza", Name: "Anonymous #1", Text: "old stuff", SentAt: time.Now().Add(-time.Hour)}
+	recent := store.Message{Room: "plaza", Name: "Anonymous #2", Text: "fresh", SentAt: time.Now()}
+	for _, m := range []store.Message{old, recent} {
+		if err := st.AddMessage(context.Background(), m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sv, err := New(context.Background(), Options{Store: st, HideChatBefore: time.Now().Add(-time.Minute)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := sv.rooms["plaza"].history
+	if len(h) != 1 || h[0].Text != "fresh" {
+		t.Fatalf("want only the fresh message, got %+v", h)
+	}
+}

@@ -40,6 +40,9 @@ type Options struct {
 	Tick   time.Duration // world update interval
 	Step   time.Duration // time to walk one tile
 	Now    func() time.Time
+	// HideChatBefore hides saved chat sent before this time (it isn't
+	// deleted): a clean slate for a demo, undone by unsetting it.
+	HideChatBefore time.Time
 }
 
 // Server holds the whole world. One mutex guards all room and session state;
@@ -146,6 +149,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		if err != nil {
 			return nil, fmt.Errorf("loading %s history: %w", def.ID, err)
 		}
+		saved = sv.visibleChat(saved)
 		r := newRoom(def, saved)
 		r.pinned = true
 		sv.rooms[def.ID] = r
@@ -158,6 +162,20 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		return nil, fmt.Errorf("opening storefronts: %w", err)
 	}
 	return sv, nil
+}
+
+// visibleChat drops saved messages hidden by Options.HideChatBefore.
+func (sv *Server) visibleChat(msgs []store.Message) []store.Message {
+	if sv.opts.HideChatBefore.IsZero() {
+		return msgs
+	}
+	out := msgs[:0:0]
+	for _, m := range msgs {
+		if !m.SentAt.Before(sv.opts.HideChatBefore) {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // Handler serves the client at / and the realtime socket at /ws.

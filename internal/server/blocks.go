@@ -127,6 +127,7 @@ func (sv *Server) roomFor(ctx context.Context, slug string) (*room, error) {
 	if err != nil {
 		return nil, err
 	}
+	saved = sv.visibleChat(saved)
 
 	sv.mu.Lock()
 	defer sv.mu.Unlock()
