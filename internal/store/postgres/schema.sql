@@ -15,6 +15,8 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS style_skin      smallint NOT NULL 
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS style_hair      smallint NOT NULL DEFAULT 0;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS style_outfit    smallint NOT NULL DEFAULT 0;
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS style_accessory smallint NOT NULL DEFAULT 0;
+-- A fresh random look at each login instead of the saved one.
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS random_look boolean NOT NULL DEFAULT false;
 -- Newcomers this account was first to greet (PLAN.md §4.1).
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS welcomes integer NOT NULL DEFAULT 0;
 

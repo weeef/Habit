@@ -18,6 +18,7 @@ import (
 func Run(t *testing.T, newStore func(t *testing.T) store.Store) {
 	tests := map[string]func(*testing.T, store.Store){
 		"Accounts": testAccounts,
+		"Look":     testLook,
 		"Sessions": testSessions,
 		"Messages": testMessages,
 		"Board":    testBoard,
@@ -79,6 +80,30 @@ func testAccounts(t *testing.T, s store.Store) {
 		t.Fatalf("want 2 welcomes saved, got %d", got.Welcomes)
 	}
 	if _, err := s.AddWelcome(ctx, "nobody"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("want ErrNotFound for an unknown account, got %v", err)
+	}
+}
+
+func testLook(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	if err := s.CreateAccount(ctx, account("a1", "walker")); err != nil {
+		t.Fatal(err)
+	}
+	look := store.Style{Skin: 2, Hair: 3, Outfit: 1, Accessory: 2}
+	if err := s.SetLook(ctx, "a1", look, true); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.AccountByUsername(ctx, "walker")
+	if err != nil || got.Style != look || !got.RandomLook {
+		t.Fatalf("look didn't save: %+v, %v", got, err)
+	}
+	if err := s.SetLook(ctx, "a1", look, false); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.AccountByUsername(ctx, "walker"); got.RandomLook {
+		t.Fatal("random look should be off again")
+	}
+	if err := s.SetLook(ctx, "nobody", look, false); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("want ErrNotFound for an unknown account, got %v", err)
 	}
 }

@@ -84,6 +84,17 @@ func (m *Memory) AddWelcome(_ context.Context, accountID string) (int, error) {
 	return a.Welcomes, nil
 }
 
+func (m *Memory) SetLook(_ context.Context, accountID string, style Style, random bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a := m.byID[accountID]
+	if a == nil {
+		return ErrNotFound
+	}
+	a.Style, a.RandomLook = style, random
+	return nil
+}
+
 func (m *Memory) CreateBlock(_ context.Context, b *Block) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -518,3 +518,65 @@ func TestLoginAttemptsAreRateLimited(t *testing.T) {
 		t.Fatalf("want rate-limit error after %d attempts, got %q", authBurst, msg)
 	}
 }
+
+func TestChangeLook(t *testing.T) {
+	url := startServer(t)
+	a := dial(t, url)
+	b := dial(t, url)
+
+	a.send(map[string]any{"t": "set_look", "style": map[string]int{"skin": 1}})
+	a.expect("need_account")
+
+	token := signup(a, "dresser", 1990)
+	look := map[string]any{"skin": 2, "hair": 3, "outfit": 1, "accessory": 2}
+	a.send(map[string]any{"t": "set_look", "style": look, "random": false})
+	got := a.expect("look")
+	if got["randomLook"] != false || !sameStyle(got["style"], look) {
+		t.Fatalf("want the designed look, got %v", got)
+	}
+	// Everyone in the room sees the new look.
+	for {
+		upd := b.expect("update")["avatar"].(map[string]any)
+		if sameStyle(upd["style"], look) {
+			break
+		}
+	}
+
+	// Logging in again keeps the designed look.
+	c := dial(t, url)
+	c.send(map[string]any{"t": "resume", "token": token})
+	if authed := c.expect("authed"); !sameStyle(authed["style"], look) || authed["randomLook"] != false {
+		t.Fatalf("want the saved look after login, got %v", authed)
+	}
+
+	// "Surprise me" keeps the designed look saved for later.
+	a.send(map[string]any{"t": "set_look", "style": look, "random": true})
+	if got := a.expect("look"); got["randomLook"] != true || !sameStyle(got["savedStyle"], look) {
+		t.Fatalf("want random on with the design kept, got %v", got)
+	}
+	d := dial(t, url)
+	d.send(map[string]any{"t": "resume", "token": token})
+	if authed := d.expect("authed"); authed["randomLook"] != true || !sameStyle(authed["savedStyle"], look) {
+		t.Fatalf("want random look on at login, got %v", authed)
+	}
+
+	// Out-of-range looks are ignored.
+	a.send(map[string]any{"t": "set_look", "style": map[string]int{"skin": 999}})
+	a.send(map[string]any{"t": "set_look", "style": look, "random": false})
+	if got := a.expect("look"); got["randomLook"] != false {
+		t.Fatalf("the bad look should have been skipped, got %v", got)
+	}
+}
+
+func sameStyle(got any, want map[string]any) bool {
+	g, ok := got.(map[string]any)
+	if !ok {
+		return false
+	}
+	for k, v := range want {
+		if g[k] != float64(v.(int)) {
+			return false
+		}
+	}
+	return true
+}

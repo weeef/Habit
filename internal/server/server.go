@@ -92,6 +92,7 @@ type session struct {
 	useLim     bucket
 	voteLim    bucket
 	authLim    bucket
+	lookLim    bucket
 	sentFirst  bool
 	viewing    int64  // board thread open in the client, for live replies
 	seat       string // bench prop they're sitting on
@@ -208,6 +209,7 @@ type inMsg struct {
 	Sort      string       `json:"sort"`
 	Value     int          `json:"value"`
 	Style     *store.Style `json:"style"`
+	Random    bool         `json:"random"`
 	Q         string       `json:"q"`     // a block directory search
 	Block     *blockForm   `json:"block"` // a new block
 	Slug      string       `json:"slug"`  // a block, for its storefront
@@ -283,6 +285,7 @@ func (sv *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		useLim:    newBucket(useBurst, usePerSec),
 		voteLim:   newBucket(voteBurst, votePerSec),
 		authLim:   newBucket(authBurst, authPerSec),
+		lookLim:   newBucket(lookBurst, lookPerSec),
 		style:     randomStyle(),
 	}
 	go sv.writeLoop(ctx, conn, s)
@@ -416,6 +419,9 @@ func (sv *Server) handle(ctx context.Context, s *session, m inMsg) {
 			sv.sendNotes(ctx, s, acct)
 		}
 		return
+	case "set_look":
+		sv.handleSetLook(ctx, s, m.Style, m.Random)
+		return
 	case "board":
 		sv.handleBoard(ctx, s, m.Room, m.Page, store.ThreadSort(m.Sort))
 		return
@@ -526,10 +532,13 @@ func (sv *Server) finishAuth(s *session, acct *store.Account, token, recovery st
 	}
 	s.acct = acct
 	s.style = acct.Style
+	if acct.RandomLook {
+		s.style = randomStyle() // a new look every login; their saved one is kept
+	}
 	sv.enqueue(s, map[string]any{
 		"t": "authed", "username": acct.Username, "token": token,
 		"recoveryCode": recovery, "ageBand": ageBand(acct.BirthYear, sv.opts.Now()),
-		"style": acct.Style, "welcomes": acct.Welcomes,
+		"style": s.style, "savedStyle": acct.Style, "randomLook": acct.RandomLook, "welcomes": acct.Welcomes,
 	})
 	if s.room != nil {
 		// Their anonymous tag changes from "Visitor" to "Anonymous", and

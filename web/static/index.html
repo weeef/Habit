@@ -128,7 +128,7 @@
       <label class="signup-only">Birth year <input name="birthYear" inputmode="numeric" pattern="[0-9]{4}" placeholder="YYYY" autocomplete="off"></label>
       <fieldset class="signup-only creator">
         <legend>Your character</legend>
-        <canvas id="creatorPreview" aria-hidden="true"></canvas>
+        <canvas id="creatorPreview" class="creator-preview" aria-hidden="true"></canvas>
         <div class="creator-rows">
           <div class="swatches" data-part="skin" role="radiogroup" aria-label="Skin tone"></div>
           <div class="swatches" data-part="hair" role="radiogroup" aria-label="Hair colour"></div>
@@ -140,6 +140,38 @@
       <div class="row">
         <button type="button" class="ghost" id="authCancel">Just looking</button>
         <button type="submit" id="authSubmit">Start chatting</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Change your look any time after signing up. -->
+  <dialog id="lookDialog" aria-labelledby="lookTitle">
+    <form method="dialog" id="lookForm" class="auth">
+      <h2 id="lookTitle">Your look</h2>
+      <div class="look-modes" role="radiogroup" aria-label="How you look">
+        <label class="look-mode">
+          <input type="radio" name="lookMode" value="custom" checked>
+          <span><strong>My own look</strong><br><span class="muted">Design it below. You'll look like this every time.</span></span>
+        </label>
+        <label class="look-mode">
+          <input type="radio" name="lookMode" value="random">
+          <span><strong>🎲 Surprise me</strong><br><span class="muted">A new random look every time you log in. Your design below is saved for if you switch back.</span></span>
+        </label>
+      </div>
+      <fieldset class="creator" id="lookCreator">
+        <legend>Your character</legend>
+        <canvas class="creator-preview" aria-hidden="true"></canvas>
+        <div class="creator-rows">
+          <div class="swatches" data-part="skin" role="radiogroup" aria-label="Skin tone"></div>
+          <div class="swatches" data-part="hair" role="radiogroup" aria-label="Hair colour"></div>
+          <div class="swatches" data-part="outfit" role="radiogroup" aria-label="Outfit colour"></div>
+          <div class="chips" data-part="accessory" role="group" aria-label="Accessory"></div>
+          <button type="button" class="chip" id="lookShuffle">🎲 Shuffle</button>
+        </div>
+      </fieldset>
+      <div class="row">
+        <button type="button" class="ghost" id="lookCancel">Cancel</button>
+        <button type="submit" id="lookSave">Save my look</button>
       </div>
     </form>
   </dialog>

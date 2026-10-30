@@ -27,7 +27,8 @@ type Account struct {
 	PasswordHash []byte
 	RecoveryHash []byte
 	Style        Style
-	Welcomes     int // newcomers this account was first to greet (PLAN.md §4.1)
+	RandomLook   bool // a fresh random look at each login; Style is kept for switching back
+	Welcomes     int  // newcomers this account was first to greet (PLAN.md §4.1)
 }
 
 // Block is a community anyone can start: its own room to walk into and its
@@ -46,7 +47,8 @@ type Block struct {
 	Lot       int    // which lot on that avenue (1-based); 0 for none
 }
 
-// Style is how an account's character looks, chosen at signup. Each field
+// Style is how an account's character looks, chosen at signup and changeable
+// later. Each field
 // is an index into a palette the client knows.
 type Style struct {
 	Skin      int `json:"skin"`
@@ -148,6 +150,10 @@ type Store interface {
 	// AddWelcome counts one more newcomer greeted by the account and returns
 	// the new total, or ErrNotFound.
 	AddWelcome(ctx context.Context, accountID string) (int, error)
+	// SetLook saves an account's character look and whether it gets a
+	// random one at each login instead. It returns ErrNotFound for an
+	// unknown account.
+	SetLook(ctx context.Context, accountID string, style Style, random bool) error
 
 	// CreateBlock saves a new block, or returns ErrNameTaken if the slug is
 	// in use (ignoring case).

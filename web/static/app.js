@@ -327,12 +327,13 @@ function onMessage(m) {
     case "need_account": openAuth("signup"); break;
 
     case "authed":
-      state.account = { username: m.username, ageBand: m.ageBand };
+      state.account = { username: m.username, ageBand: m.ageBand, savedStyle: m.savedStyle || m.style, randomLook: !!m.randomLook };
       store.set("habit.token", m.token);
       if (m.recoveryCode) state.recoveryCode = m.recoveryCode;
       $("authDialog").close();
       $("named").disabled = false;
       $("accountBtn").textContent = m.username;
+      $("accountBtn").title = "Change your look";
       $("notesBtn").hidden = false;
       if (state.pendingText) {
         send({ t: "chat", text: state.pendingText });
@@ -344,6 +345,12 @@ function onMessage(m) {
         state.afterAuth = null;
         f();
       }
+      break;
+
+    case "look":
+      if (state.account) Object.assign(state.account, { savedStyle: m.savedStyle, randomLook: !!m.randomLook });
+      $("lookDialog").close();
+      toast(m.randomLook ? "🎲 Surprise! A new look every time you log in." : "Looking good! Your new look is saved.");
       break;
 
     case "auth_error":
@@ -808,7 +815,7 @@ for (const t of document.querySelectorAll(".tabs [data-mode]")) {
   };
 }
 $("authCancel").onclick = () => { state.pendingText = null; state.afterAuth = null; $("authDialog").close(); };
-$("accountBtn").onclick = () => { if (!state.account) openAuth("signup"); };
+$("accountBtn").onclick = () => (state.account ? openLook() : openAuth("signup"));
 
 $("authForm").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -4355,9 +4362,14 @@ function myStyle() {
   return { skin: 0, hair: 0, outfit: 0, accessory: 3, ...(me?.style || {}) };
 }
 
+// The creator fieldset being edited: the one in the signup form, or the one
+// in the "Your look" dialog.
+let creatorRoot = null;
+
 function renderCreator() {
+  const root = creatorRoot;
   for (const [part, list, name] of CREATOR_PARTS) {
-    const row = document.querySelector(`.swatches[data-part="${part}"]`);
+    const row = root.querySelector(`.swatches[data-part="${part}"]`);
     row.replaceChildren();
     list.forEach((color, i) => {
       const b = document.createElement("button");
@@ -4371,7 +4383,7 @@ function renderCreator() {
       row.append(b);
     });
   }
-  const chips = document.querySelector('.chips[data-part="accessory"]');
+  const chips = root.querySelector('.chips[data-part="accessory"]');
   chips.replaceChildren();
   ACCESSORY_NAMES.forEach((name, i) => {
     const b = document.createElement("button");
@@ -4387,8 +4399,9 @@ function renderCreator() {
 let creatorFrame = 0;
 function drawCreator(now) {
   creatorFrame = 0;
-  if (!$("authDialog").open || authMode !== "signup") return;
-  const c = $("creatorPreview");
+  const dialog = creatorRoot?.closest("dialog");
+  if (!dialog?.open || (dialog.id === "authDialog" && authMode !== "signup")) return;
+  const c = creatorRoot.querySelector("canvas");
   const dpr = window.devicePixelRatio || 1;
   const w = c.clientWidth, h = c.clientHeight;
   if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
@@ -4409,7 +4422,8 @@ function drawCreator(now) {
   creatorFrame = requestAnimationFrame(drawCreator);
 }
 
-function startCreator() {
+function startCreator(root = document.querySelector("#authForm .creator")) {
+  creatorRoot = root;
   if (!state.draftStyle) state.draftStyle = myStyle();
   renderCreator();
   if (!creatorFrame) creatorFrame = requestAnimationFrame(drawCreator);
@@ -4993,3 +5007,31 @@ function lotClaimed(b) {
   toast(`🏪 ${b.bullet} ${b.name} now has a storefront on ${b.street}!`, 6000);
 }
 $("leaseClose").onclick = () => $("leaseDialog").close();
+
+// ---- changing your look after signing up ----
+//
+// Click your name: design a look you keep, or pick "Surprise me" for a new
+// random one every time you log in (your design is kept for switching back).
+
+function lookMode() { return $("lookForm").lookMode.value; }
+
+function openLook() {
+  state.draftStyle = { ...(state.account.savedStyle || myStyle()) };
+  $("lookForm").lookMode.value = state.account.randomLook ? "random" : "custom";
+  $("lookSave").disabled = false;
+  $("lookDialog").showModal();
+  startCreator($("lookCreator"));
+}
+
+$("lookShuffle").onclick = () => {
+  const pick = (n) => Math.floor(Math.random() * n);
+  state.draftStyle = { skin: pick(SKIN.length), hair: pick(HAIR.length), outfit: pick(OUTFITS.length), accessory: pick(ACCESSORY_NAMES.length) };
+  renderCreator();
+};
+$("lookCancel").onclick = () => $("lookDialog").close();
+$("lookForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  $("lookSave").disabled = true;
+  setTimeout(() => { $("lookSave").disabled = false; }, 3000); // in case the server asks us to wait
+  send({ t: "set_look", style: state.draftStyle, random: lookMode() === "random" });
+});

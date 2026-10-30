@@ -223,7 +223,11 @@ dialog::backdrop { background: rgb(20 12 40 / 0.4); -webkit-backdrop-filter: blu
   border: 2px solid var(--line); border-radius: 18px; padding: 8px 12px 12px; margin: 0;
 }
 .creator legend { font-weight: 900; padding: 0 6px; }
-#creatorPreview { width: 110px; height: 130px; }
+#creatorPreview, .creator-preview { width: 110px; height: 130px; }
+.look-modes { display: grid; gap: 8px; }
+.auth .look-mode { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 2px solid var(--line); border-radius: 14px; cursor: pointer; text-align: left; }
+.auth .look-mode input { flex: none; width: auto; margin: 3px 0 0; accent-color: var(--taxi-ink); }
+.auth .look-mode:has(input:checked) { border-color: var(--taxi); background: rgb(255 205 56 / 0.12); }
 .creator-rows { display: grid; gap: 8px; }
 .swatches, .chips { display: flex; flex-wrap: wrap; gap: 5px; }
 .swatch {

@@ -44,12 +44,12 @@ func Open(ctx context.Context, url string) (*Store, error) {
 func (s *Store) Close() { s.pool.Close() }
 
 const accountCols = `a.id, a.username, a.birth_year, a.created_at, a.salt, a.password_hash, a.recovery_hash,
-	a.style_skin, a.style_hair, a.style_outfit, a.style_accessory, a.welcomes`
+	a.style_skin, a.style_hair, a.style_outfit, a.style_accessory, a.random_look, a.welcomes`
 
 func scanAccount(row pgx.Row) (*store.Account, error) {
 	var a store.Account
 	err := row.Scan(&a.ID, &a.Username, &a.BirthYear, &a.CreatedAt, &a.Salt, &a.PasswordHash, &a.RecoveryHash,
-		&a.Style.Skin, &a.Style.Hair, &a.Style.Outfit, &a.Style.Accessory, &a.Welcomes)
+		&a.Style.Skin, &a.Style.Hair, &a.Style.Outfit, &a.Style.Accessory, &a.RandomLook, &a.Welcomes)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, store.ErrNotFound
 	}
@@ -86,6 +86,17 @@ func (s *Store) AddWelcome(ctx context.Context, accountID string) (int, error) {
 		return 0, store.ErrNotFound
 	}
 	return n, err
+}
+
+func (s *Store) SetLook(ctx context.Context, accountID string, style store.Style, random bool) error {
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE accounts SET style_skin = $2, style_hair = $3, style_outfit = $4, style_accessory = $5, random_look = $6
+		 WHERE id = $1`,
+		accountID, style.Skin, style.Hair, style.Outfit, style.Accessory, random)
+	if err == nil && tag.RowsAffected() == 0 {
+		return store.ErrNotFound
+	}
+	return err
 }
 
 const blockCols = `slug, name, bullet, color, about, template, coalesce(owner_id, ''), official, created_at, street, lot`
