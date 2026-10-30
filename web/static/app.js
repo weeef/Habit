@@ -81,9 +81,31 @@ const THEMES = {
     wall: { color: "#f7f9fc", top: "#ffffff", trim: "#ff9466", h: 2.6, decor: "gym" },
   },
   // The town's avenues look like the Plaza: paving, sidewalks, a skyline.
+  // Each can pick its own buildings (skyline: a cycle of STYLES) and shop
+  // signs (signs, signStyles, signChance, maxSigns).
   avenue: {
     accent: "#3cc28f", deco: null, outdoor: true, void: "#d6eeff",
     materials: { ".": ["#f6f1ea", "#f1ebe3"], ",": ["#e6e4ea", "#e0dee5"], ":": ["#fde9d0", "#f9e2c6"] },
+  },
+  // 1st Avenue: a leafy brownstone street with warm brick sidewalks and
+  // little shops.
+  "avenue-garden": {
+    accent: "#e0795a", deco: null, outdoor: true, void: "#dff1ff",
+    materials: { ".": ["#f3e4d2", "#eedcc8"], ",": ["#e2a48f", "#db9a85"], ":": ["#f7d9b8", "#f2d0ac"] },
+    skyline: ["brownstone", "brownstone", "brick", "brownstone", "brownstone", "brick"],
+    signs: ["BAKERY", "BOOKS", "FLOWERS", "CAFÉ", "RECORDS"],
+    signStyles: ["brick"], signChance: 0.6, maxSigns: 3,
+    lease: { style: "brick", colors: ["#c48b6f", "#b77d63", "#cf9a7d"], height: 3.4, hues: [140, 150, 130], awnings: ["#3d8b5f", "#e0795a", "#3d8b5f"] },
+  },
+  // 2nd Avenue: the theatre district. Dark pavement, glass and Art Deco
+  // towers, and a neon sign on nearly every building.
+  "avenue-neon": {
+    accent: "#ff4fd8", deco: null, outdoor: true, void: "#cfd6f6",
+    materials: { ".": ["#5c5778", "#57526f"], ",": ["#45415d", "#403c57"], ":": ["#77708f", "#706989"] },
+    skyline: ["glass", "deco", "brick", "glass", "deco", "glass"],
+    signs: ["SHOWS TONIGHT", "BROADWAY", "LIVE MUSIC", "CINEMA", "KARAOKE", "COMEDY", "24 HRS", "NOODLES"],
+    signStyles: ["glass", "deco", "brick"], signChance: 0.95, maxSigns: 12,
+    lease: { style: "brick", colors: ["#4b3f66", "#3f3658", "#55486f"], height: 4.2, hues: [320, 190, 50, 280], awnings: ["#ff4fd8", "#33d6ff", "#ffd23f"] },
   },
   // Rooms people pick when they start a block.
   lounge: { floorA: "#f3e1cb", floorB: "#eed9c0", accent: "#d08a55", deco: null },
@@ -1318,13 +1340,16 @@ function cityBlocks() {
   const rows = state.room.rows, W = rows[0].length, H = rows.length;
   const blocks = [];
   let i = 0, signs = 0;
+  const look = theme(state.room.theme);
+  const cycle = look.skyline || STYLE_CYCLE, signList = look.signs || SIGNS;
+  const signStyles = look.signStyles || ["brick", "glass"], signChance = look.signChance ?? 0.55, maxSigns = look.maxSigns ?? 6;
   // Doors and empty shop lots each get a storefront's worth of frontage.
   const fronts = [...state.room.doors.map((d) => d.pos), ...emptyLots().map((l) => l.pos)];
   for (const side of ["right", "left"]) {
     const len = side === "right" ? W : H;
     let a = -0.5;
     while (a < len - 0.51) {
-      const style = STYLE_CYCLE[(i * 3 + (side === "left" ? 5 : 0)) % STYLE_CYCLE.length];
+      const style = cycle[(i * 3 + (side === "left" ? 5 : 0)) % cycle.length];
       const s = STYLES[style];
       let width = Math.min(len - 0.5 - a, style === "brownstone" ? 2 : hash2(i * 7 + 3, 11) < 0.5 ? 3 : 4);
       // Give each door's storefront a good 4 tiles centred on the door:
@@ -1336,7 +1361,7 @@ function cityBlocks() {
         else width = Math.min(width, dc - 2 - a);
       }
       const height = s.h[0] + hash2(i, 5) * (s.h[1] - s.h[0]);
-      const sign = (style === "brick" || style === "glass") && hash2(i, 31) < 0.55 && signs < 6 ? SIGNS[signs++ % SIGNS.length] : null;
+      const sign = signStyles.includes(style) && hash2(i, 31) < signChance && signs < maxSigns ? signList[signs++ % signList.length] : null;
       blocks.push({
         side, style, a0: a, a1: a + width, height, sign,
         color: s.colors[i % s.colors.length], awning: AWNINGS[(i * 5) % AWNINGS.length],
@@ -1358,13 +1383,19 @@ function cityBlocks() {
       signAt: [Math.max(b.a0 + 0.1, c - 1.1), Math.min(b.a1 - 0.1, c + 1.1), 1.3, 2.15],
     });
   }
-  // Empty lots on an avenue: a shop with a "for lease" sign.
+  // Empty lots on an avenue: a shop with a "for lease" sign, built in the
+  // avenue's own style (look.lease) when it has one.
+  const lease = look.lease || {};
+  let lots = 0;
   for (const l of emptyLots()) {
     const c = l.pos[0];
     const b = blocks.find((x) => x.side === "right" && x.a0 < c && c < x.a1);
     if (!b) continue;
+    const pick = (list, fallback) => (list ? list[lots % list.length] : fallback);
+    lots++;
     Object.assign(b, {
-      style: "brick", color: "#d9cfc6", height: 3.6, sign: "FOR LEASE", signHue: 45,
+      style: lease.style || "brick", color: pick(lease.colors, "#d9cfc6"), height: lease.height || 3.6,
+      sign: "FOR LEASE", signHue: pick(lease.hues, 45), awning: pick(lease.awnings, b.awning),
       lease: l, shop: false, waterTower: false,
       signAt: [Math.max(b.a0 + 0.1, c - 1.2), Math.min(b.a1 - 0.1, c + 1.2), 1.3, 2.1],
     });

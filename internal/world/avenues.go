@@ -21,13 +21,16 @@ const (
 var lotXs = []int{3, 7, 11, 15, 19, 23}
 
 // avenueSpots is where each avenue's gateway sits on the Plaza's skyline.
+// Each avenue has its own character: Theme picks its colours and skyline
+// in the client, and its props are set out in avenueProps.
 var avenueSpots = []struct {
 	ID, Name string
 	Gate     Point // on the Plaza's back edge
+	Theme    string
 }{
-	{"ave-1", "1st Avenue", Point{0, 20}},
-	{"ave-2", "2nd Avenue", Point{20, 0}},
-	{"ave-3", "3rd Avenue", Point{0, 26}},
+	{"ave-1", "1st Avenue", Point{0, 20}, "avenue-garden"}, // leafy brownstones
+	{"ave-2", "2nd Avenue", Point{20, 0}, "avenue-neon"},   // the theatre district
+	{"ave-3", "3rd Avenue", Point{0, 26}, "avenue"},
 }
 
 // AvenueExit is where you stand on an avenue after stepping out of a
@@ -76,22 +79,9 @@ func Avenues() []*Room {
 		if a.Gate.Y == 0 {
 			back = Point{a.Gate.X, a.Gate.Y + 1}
 		}
-		one := func(id, kind string, x, y int) Prop { return Prop{ID: id, Kind: kind, At: Point{x, y}} }
-		props := []Prop{
-			{ID: "subway", Kind: PropSubway, At: Point{avenueW - 4, 5}, W: 2, H: 2},
-			{ID: "bench-a", Kind: PropBench, At: Point{8, 6}, W: 2, H: 1, Dir: Point{0, -1}},
-			{ID: "bench-b", Kind: PropBench, At: Point{17, 6}, W: 2, H: 1, Dir: Point{0, -1}},
-			one("news", PropNewsbox, 1, 6),
-			one("hydrant", PropHydrant, 13, 2),
-		}
-		for k, x := range []int{5, 11, 21} {
-			props = append(props, one(fmt.Sprintf("tree-%d", k), PropTree, x, 4))
-		}
-		for k, x := range []int{2, 14, 26} {
-			props = append(props, one(fmt.Sprintf("lamp-%d", k), PropLamp, x, 3))
-		}
+		props := avenueProps(a.Theme)
 		out = append(out, &Room{
-			ID: a.ID, Name: "🏙️ " + a.Name, Kind: KindStreet, Theme: "avenue",
+			ID: a.ID, Name: "🏙️ " + a.Name, Kind: KindStreet, Theme: a.Theme,
 			Rows:     rows,
 			Spawn:    Point{2, 4},
 			Doors:    []Door{{At: Point{0, 4}, Target: "plaza", TargetAt: back, Label: "⛲ The Plaza"}},
@@ -101,6 +91,65 @@ func Avenues() []*Room {
 		})
 	}
 	return out
+}
+
+// avenueProps sets out an avenue's street furniture. Every avenue keeps a
+// subway entrance, so it's always a stop on the map.
+func avenueProps(theme string) []Prop {
+	one := func(id, kind string, x, y int) Prop { return Prop{ID: id, Kind: kind, At: Point{x, y}} }
+	variant := func(id, kind, v string, x, y int) Prop { p := one(id, kind, x, y); p.Variant = v; return p }
+	bench := func(id string, x, y int) Prop {
+		return Prop{ID: id, Kind: PropBench, At: Point{x, y}, W: 2, H: 1, Dir: Point{0, -1}}
+	}
+	props := []Prop{{ID: "subway", Kind: PropSubway, At: Point{avenueW - 4, 5}, W: 2, H: 2}}
+	switch theme {
+	case "avenue-garden":
+		// A leafy residential street: a row of cherry trees and oaks with
+		// flowering planters between them, benches under the trees, and
+		// old-fashioned lamps.
+		for k, x := range []int{3, 7, 11, 15, 19} {
+			if k%2 == 0 {
+				props = append(props, one(fmt.Sprintf("tree-%d", k), PropTree, x, 3))
+			} else {
+				props = append(props, variant(fmt.Sprintf("tree-%d", k), PropTree, "leafy", x, 3))
+			}
+		}
+		for k, x := range []int{5, 9, 13, 17, 21} {
+			props = append(props, variant(fmt.Sprintf("planter-%d", k), PropBush, "flowers", x, 3))
+		}
+		props = append(props,
+			bench("bench-a", 4, 6), bench("bench-b", 10, 6), bench("bench-c", 16, 6),
+			one("lamp-0", PropLamp, 1, 3), one("lamp-1", PropLamp, 23, 3),
+			one("news", PropNewsbox, 1, 6),
+			variant("cart-coffee", PropCart, "coffee", 20, 6),
+		)
+	case "avenue-neon":
+		// The theatre district: no trees, lamps all along, food carts for
+		// the after-show crowd, newspaper boxes and hydrants.
+		for k, x := range []int{2, 6, 10, 14, 18, 22} {
+			props = append(props, one(fmt.Sprintf("lamp-%d", k), PropLamp, x, 3))
+		}
+		props = append(props,
+			Prop{ID: "cart-hotdog", Kind: PropCart, Variant: "hotdog", At: Point{4, 5}, W: 2, H: 1, Dir: Point{0, -1}},
+			Prop{ID: "cart-pretzel", Kind: PropCart, Variant: "pretzel", At: Point{15, 5}, W: 2, H: 1, Dir: Point{0, -1}},
+			bench("bench-a", 9, 6),
+			one("news-a", PropNewsbox, 1, 6), one("news-b", PropNewsbox, 12, 2),
+			one("hydrant-a", PropHydrant, 8, 2), one("hydrant-b", PropHydrant, 20, 2),
+		)
+	default:
+		props = append(props,
+			bench("bench-a", 8, 6), bench("bench-b", 17, 6),
+			one("news", PropNewsbox, 1, 6),
+			one("hydrant", PropHydrant, 13, 2),
+		)
+		for k, x := range []int{5, 11, 21} {
+			props = append(props, one(fmt.Sprintf("tree-%d", k), PropTree, x, 4))
+		}
+		for k, x := range []int{2, 14, 26} {
+			props = append(props, one(fmt.Sprintf("lamp-%d", k), PropLamp, x, 3))
+		}
+	}
+	return props
 }
 
 func lotDoors() []Point {

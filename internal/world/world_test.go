@@ -146,3 +146,35 @@ func TestBlockTemplates(t *testing.T) {
 		}
 	}
 }
+
+func TestAvenuesWalkable(t *testing.T) {
+	themes := map[string]bool{}
+	for _, r := range Avenues() {
+		themes[r.Theme] = true
+		for i, lot := range r.Lots {
+			if FindPath(r, r.Spawn, lot) == nil {
+				t.Errorf("%s: can't walk from the spawn to lot %d", r.ID, i+1)
+			}
+		}
+		sub := r.PropByID("subway")
+		if sub == nil || !adjacentFloor(r, sub) {
+			t.Errorf("%s: the subway needs to be reachable", r.ID)
+		}
+	}
+	if len(themes) != len(avenueSpots) {
+		t.Errorf("each avenue should have its own look, got themes %v", themes)
+	}
+}
+
+// adjacentFloor reports whether someone can walk up to the prop.
+func adjacentFloor(r *Room, p *Prop) bool {
+	for _, q := range p.Tiles() {
+		for _, d := range []Point{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
+			n := Point{q.X + d.X, q.Y + d.Y}
+			if r.Standable(n) && FindPath(r, r.Spawn, n) != nil {
+				return true
+			}
+		}
+	}
+	return false
+}
