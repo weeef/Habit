@@ -447,6 +447,13 @@ function onMessage(m) {
 
     case "votes": applyVotes(m); break;
 
+    case "board_removed":
+      // A thread was taken down (like a replaced question of the day).
+      if (state.board) state.board.threads = state.board.threads.filter((x) => x.id !== m.thread);
+      if (state.thread?.thread.id === m.thread) state.thread = null;
+      renderBoard();
+      break;
+
     case "board_update":
       upsertThread(m.thread);
       if (state.thread?.thread.id === m.thread.id) state.thread.thread = m.thread;

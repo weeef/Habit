@@ -225,6 +225,9 @@ type Store interface {
 	// VotesBy returns the account's votes on the given threads (missing = 0).
 	VotesBy(ctx context.Context, accountID string, threadIDs []int64) (map[int64]int, error)
 	Thread(ctx context.Context, id int64) (*Thread, error)
+	// DeleteThread removes a thread with its replies, votes and reply
+	// notifications, or returns ErrNotFound.
+	DeleteThread(ctx context.Context, id int64) error
 	// Replies returns a thread's replies, oldest first.
 	Replies(ctx context.Context, threadID int64) ([]Reply, error)
 	// AddReply saves r, sets its ID, bumps the thread, and notifies everyone

@@ -17,17 +17,18 @@ import (
 // Run checks a store implementation. newStore must return an empty store.
 func Run(t *testing.T, newStore func(t *testing.T) store.Store) {
 	tests := map[string]func(*testing.T, store.Store){
-		"Accounts":   testAccounts,
-		"Look":       testLook,
-		"Moderation": testModeration,
-		"Sessions":   testSessions,
-		"Messages":   testMessages,
-		"Board":      testBoard,
-		"Notify":     testNotifications,
-		"Votes":      testVotesAndSorts,
-		"Secret":     testSecret,
-		"Counters":   testCounters,
-		"Blocks":     testBlocks,
+		"Accounts":     testAccounts,
+		"Look":         testLook,
+		"Moderation":   testModeration,
+		"DeleteThread": testDeleteThread,
+		"Sessions":     testSessions,
+		"Messages":     testMessages,
+		"Board":        testBoard,
+		"Notify":       testNotifications,
+		"Votes":        testVotesAndSorts,
+		"Secret":       testSecret,
+		"Counters":     testCounters,
+		"Blocks":       testBlocks,
 	}
 	for name, fn := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -158,6 +159,29 @@ func testModeration(t *testing.T, s store.Store) {
 	}
 	if n, err := s.DeleteMessages(ctx, ""); err != nil || n != 1 {
 		t.Fatalf("want the last message deleted, got %d, %v", n, err)
+	}
+}
+
+func testDeleteThread(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	if err := s.CreateAccount(ctx, account("a1", "poster")); err != nil {
+		t.Fatal(err)
+	}
+	th := &store.Thread{Room: "plaza", AccountID: "a1", Title: "old question", Text: "?", CreatedAt: now}
+	if err := s.CreateThread(ctx, th); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddReply(ctx, &store.Reply{ThreadID: th.ID, AccountID: "a1", Text: "an answer", CreatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteThread(ctx, th.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Thread(ctx, th.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("the thread should be gone, got %v", err)
+	}
+	if err := s.DeleteThread(ctx, th.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("want ErrNotFound the second time, got %v", err)
 	}
 }
 

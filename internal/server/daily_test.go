@@ -98,3 +98,68 @@ func TestDailyRhythm(t *testing.T) {
 		t.Fatalf("after restart: %+v", again)
 	}
 }
+
+func TestQuestionOfTheDay(t *testing.T) {
+	// The same question all day, and a different one the next day.
+	day := "2026-10-30"
+	if questionFor(day) != questionFor(day) {
+		t.Fatal("a day's question must not change")
+	}
+	seen := map[string]bool{}
+	d, _ := time.Parse(time.DateOnly, day)
+	for i := 0; i < 60; i++ {
+		today := d.AddDate(0, 0, i).Format(time.DateOnly)
+		yesterday := d.AddDate(0, 0, i-1).Format(time.DateOnly)
+		if questionFor(today) == questionFor(yesterday) {
+			t.Fatalf("%s repeats yesterday's question", today)
+		}
+		seen[questionFor(today)] = true
+	}
+	if len(seen) < 20 {
+		t.Fatalf("want a good spread of questions over 60 days, got %d different ones", len(seen))
+	}
+}
+
+func TestStaleQuestionIsReplaced(t *testing.T) {
+	// Today's thread was posted with a question that's no longer the pick
+	// (the list changed): it's taken down, answers and all, and today's
+	// question goes up instead.
+	ctx := context.Background()
+	st := store.NewMemory()
+	clock := &fakeClock{t: time.Date(2026, 10, 30, 12, 0, 0, 0, plazaZone)}
+	day := plazaDay(clock.Now())
+	old := &store.Thread{Room: "plaza", Name: dailyAuthor, Title: questionTitle("Breakfast for dinner: genius or chaos?"), Text: "?", CreatedAt: clock.Now()}
+	if err := st.CreateThread(ctx, old); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddReply(ctx, &store.Reply{ThreadID: old.ID, Text: "chaos", CreatedAt: clock.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetCounter(ctx, "daily-thread:"+day, old.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	sv, _ := startClocked(t, st, clock)
+	sv.mu.Lock()
+	now := sv.today
+	sv.mu.Unlock()
+	if now.thread == old.ID || now.question != questionFor(day) {
+		t.Fatalf("want a new thread for %q, got thread %d %q", questionFor(day), now.thread, now.question)
+	}
+	if _, err := st.Thread(ctx, old.ID); err == nil {
+		t.Fatal("the old question should be gone")
+	}
+	th, err := st.Thread(ctx, now.thread)
+	if err != nil || th.Title != questionTitle(questionFor(day)) {
+		t.Fatalf("want today's question posted, got %+v, %v", th, err)
+	}
+
+	// Restarting keeps today's (current) question and its thread.
+	sv2, _ := startClocked(t, st, clock)
+	sv2.mu.Lock()
+	again := sv2.today.thread
+	sv2.mu.Unlock()
+	if again != now.thread {
+		t.Fatalf("a restart shouldn't replace a current question: %d then %d", now.thread, again)
+	}
+}

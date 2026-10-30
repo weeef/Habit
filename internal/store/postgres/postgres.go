@@ -137,6 +137,15 @@ func (s *Store) DeleteMessages(ctx context.Context, room string) (int64, error) 
 	return tag.RowsAffected(), nil
 }
 
+func (s *Store) DeleteThread(ctx context.Context, id int64) error {
+	// Replies, votes and notifications go with it (ON DELETE CASCADE).
+	tag, err := s.pool.Exec(ctx, `DELETE FROM threads WHERE id = $1`, id)
+	if err == nil && tag.RowsAffected() == 0 {
+		return store.ErrNotFound
+	}
+	return err
+}
+
 func (s *Store) SetLook(ctx context.Context, accountID string, style store.Style, random bool) error {
 	tag, err := s.pool.Exec(ctx,
 		`UPDATE accounts SET style_skin = $2, style_hair = $3, style_outfit = $4, style_accessory = $5, random_look = $6

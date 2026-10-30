@@ -384,6 +384,29 @@ func (m *Memory) VotesBy(_ context.Context, accountID string, threadIDs []int64)
 	return out, nil
 }
 
+func (m *Memory) DeleteThread(_ context.Context, id int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.threads[id] == nil {
+		return ErrNotFound
+	}
+	delete(m.threads, id)
+	delete(m.replies, id)
+	for k := range m.votes {
+		if k.thread == id {
+			delete(m.votes, k)
+		}
+	}
+	kept := m.notes[:0]
+	for _, n := range m.notes {
+		if n.ThreadID != id {
+			kept = append(kept, n)
+		}
+	}
+	m.notes = kept
+	return nil
+}
+
 func (m *Memory) Thread(_ context.Context, id int64) (*Thread, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
