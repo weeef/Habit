@@ -172,7 +172,14 @@ func hashToken(token string) []byte {
 	return h[:]
 }
 
+// hashSlots caps how many password hashes run at once. Each one uses 64 MB
+// on purpose, so without a cap a burst of logins can run the server out of
+// memory; extra attempts wait their turn instead.
+var hashSlots = make(chan struct{}, 2)
+
 func hashSecret(secret string, salt []byte) []byte {
+	hashSlots <- struct{}{}
+	defer func() { <-hashSlots }()
 	return argon2.IDKey([]byte(secret), salt, 1, 64*1024, 4, 32)
 }
 

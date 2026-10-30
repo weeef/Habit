@@ -503,3 +503,18 @@ func TestPlazaHolds500(t *testing.T) {
 		taken[s.pos] = true
 	}
 }
+
+func TestLoginAttemptsAreRateLimited(t *testing.T) {
+	url := startServer(t)
+	a := dial(t, url)
+	for i := 0; i < authBurst; i++ {
+		a.send(map[string]any{"t": "login", "username": "nobody", "password": "wrong password!!"})
+		if msg := a.expect("auth_error")["message"]; msg != ErrBadLogin.Error() {
+			t.Fatalf("attempt %d: want a normal bad-login error, got %q", i+1, msg)
+		}
+	}
+	a.send(map[string]any{"t": "login", "username": "nobody", "password": "wrong password!!"})
+	if msg := a.expect("auth_error")["message"].(string); !strings.Contains(msg, "Too many tries") {
+		t.Fatalf("want rate-limit error after %d attempts, got %q", authBurst, msg)
+	}
+}

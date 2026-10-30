@@ -90,6 +90,7 @@ type session struct {
 	replyLim   bucket
 	useLim     bucket
 	voteLim    bucket
+	authLim    bucket
 	sentFirst  bool
 	viewing    int64  // board thread open in the client, for live replies
 	seat       string // bench prop they're sitting on
@@ -280,6 +281,7 @@ func (sv *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		replyLim:  newBucket(replyBurst, replyPerSec),
 		useLim:    newBucket(useBurst, usePerSec),
 		voteLim:   newBucket(voteBurst, votePerSec),
+		authLim:   newBucket(authBurst, authPerSec),
 		style:     randomStyle(),
 	}
 	go sv.writeLoop(ctx, conn, s)
@@ -382,6 +384,9 @@ func (sv *Server) handle(ctx context.Context, s *session, m inMsg) {
 	// away, so both happen outside the world lock.
 	switch m.T {
 	case "signup":
+		if !sv.allowAuth(s) {
+			return
+		}
 		sv.mu.Lock()
 		style := s.style // keep the guest's look unless they designed one
 		sv.mu.Unlock()
@@ -392,6 +397,9 @@ func (sv *Server) handle(ctx context.Context, s *session, m inMsg) {
 		sv.finishAuth(s, acct, token, recovery, err)
 		return
 	case "login":
+		if !sv.allowAuth(s) {
+			return
+		}
 		acct, token, err := sv.accounts.Login(ctx, strings.TrimSpace(m.Username), m.Password, sv.opts.Now())
 		sv.finishAuth(s, acct, token, "", err)
 		if err == nil {
@@ -489,6 +497,23 @@ func (sv *Server) handle(ctx context.Context, s *session, m inMsg) {
 			sv.enqueue(s, map[string]any{"t": "peek", "room": r.def.ID, "name": r.def.Name, "count": len(r.sessions), "recent": recent})
 		}
 	}
+}
+
+// Login and signup each run a deliberately slow password hash, so they're
+// rate limited per connection on top of the global cap in hashSecret.
+const (
+	authBurst  = 5
+	authPerSec = 0.1 // one more attempt every 10 seconds after the burst
+)
+
+func (sv *Server) allowAuth(s *session) bool {
+	sv.mu.Lock()
+	defer sv.mu.Unlock()
+	if s.authLim.allow(sv.opts.Now()) {
+		return true
+	}
+	sv.enqueue(s, map[string]any{"t": "auth_error", "message": "Too many tries. Wait a few seconds and try again."})
+	return false
 }
 
 func (sv *Server) finishAuth(s *session, acct *store.Account, token, recovery string, err error) {
