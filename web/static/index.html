@@ -16,6 +16,19 @@
       <canvas id="world"></canvas>
       <div class="tooltip" id="tooltip" hidden></div>
       <div class="hint" id="hint">Click the floor to walk. Walk into a door to visit a room.</div>
+      <!-- A four-step welcome for first-time visitors (once per browser; ? replays it). -->
+      <section class="tutorial sign" id="tutorial" hidden aria-live="polite" aria-labelledby="tutorialTitle">
+        <div class="tutorial-icon" id="tutorialIcon" aria-hidden="true">👋</div>
+        <div class="tutorial-body">
+          <h2 id="tutorialTitle"></h2>
+          <p id="tutorialText"></p>
+        </div>
+        <div class="tutorial-foot">
+          <span class="tutorial-dots" id="tutorialDots" aria-hidden="true"></span>
+          <button type="button" class="ghost" id="tutorialSkip">Skip</button>
+          <button type="button" id="tutorialNext">Next</button>
+        </div>
+      </section>
       <div class="emotes" role="group" aria-label="Emotes">
         <button type="button" data-emote="wave" title="Wave">👋</button>
         <button type="button" data-emote="dance" title="Dance">💃</button>
@@ -37,6 +50,7 @@
         <button type="button" class="sign-chip time-chip" id="timeChip" hidden></button>
         <button type="button" id="notesBtn" class="sign-chip bell" hidden aria-label="Replies to you">🔔<span class="badge" id="notesCount" hidden></span></button>
         <button type="button" id="viewToggle" class="sign-chip" aria-pressed="false" title="Switch between the world and a plain chat list">List view</button>
+        <button type="button" id="helpBtn" class="sign-chip" title="How Habit works" aria-label="How Habit works">?</button>
         <button type="button" id="adminBtn" class="sign-chip" hidden title="Moderate">🛡️ Admin</button>
         <button type="button" id="accountBtn" class="sign-chip">Sign up</button>
       </div>

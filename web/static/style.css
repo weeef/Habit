@@ -145,6 +145,24 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, .station:focu
   position: absolute; left: 12px; top: 84px; z-index: 3;
   color: var(--sign-muted); padding: 6px 12px; border-radius: 999px; font-size: 13px;
 }
+.sign.tutorial {
+  position: absolute; bottom: 76px; z-index: 4;
+  left: calc((100% - var(--inset-r, 0px)) / 2); transform: translateX(-50%);
+  width: min(380px, calc(100% - 32px)); padding: 18px 16px 12px; border-radius: 18px;
+  display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; align-items: start;
+  animation: tutorial-in 0.25s ease-out;
+}
+@keyframes tutorial-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+.tutorial-icon { font-size: 30px; line-height: 1; padding-top: 2px; }
+.tutorial h2 { margin: 0 0 4px; font-size: 16px; }
+.tutorial p { margin: 0; font-size: 14px; line-height: 1.4; color: var(--sign-muted); }
+.tutorial-foot { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.tutorial-dots { flex: 1; display: flex; gap: 5px; }
+.tutorial-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--sign-line); }
+.tutorial-dots i.on { background: var(--taxi); }
+.tutorial-foot button { padding: 6px 14px; font-size: 13px; }
+.tutorial-foot .ghost { color: var(--sign-muted); }
+@media (prefers-reduced-motion: reduce) { .sign.tutorial { animation: none; } }
 .emotes {
   position: absolute; bottom: 14px; z-index: 3;
   left: calc((100% - var(--inset-r, 0px)) / 2); transform: translateX(-50%);
@@ -479,6 +497,12 @@ body.chat-hidden .side { display: none; }
   .side { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; height: 44dvh; }
   .emotes { left: 50%; bottom: calc(44dvh + 18px); }
   body.chat-hidden .emotes { bottom: 14px; }
+  /* The tutorial sits just above the emotes, clear of the chat sheet. */
+  .sign.tutorial { left: 50%; bottom: calc(44dvh + 70px); padding: 16px 14px 10px; }
+  body.chat-hidden .sign.tutorial { bottom: 70px; }
+  body.touring .left-stack { display: none; } /* no room for both on a phone */
+  .tutorial-icon { font-size: 24px; }
+  .tutorial p { font-size: 13px; }
   .emotes button { font-size: 17px; padding: 4px 8px; }
   .log { min-height: 40px; }
   body.list-view .side { top: 60px; height: auto; }

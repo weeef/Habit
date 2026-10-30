@@ -4257,6 +4257,7 @@ canvas.addEventListener("click", (e) => {
   if (isFloor(t.x, t.y)) {
     send({ t: "walk", x: t.x, y: t.y });
     $("hint").hidden = true;
+    tutorialWalked();
   }
 });
 
@@ -5137,3 +5138,49 @@ $("adminForm").addEventListener("submit", (e) => {
 });
 $("clearRoom").onclick = () => { if (confirm("Delete this room's chat for everyone? This can't be undone.")) mod("clear_chat"); };
 $("clearAll").onclick = () => { if (confirm("Delete the chat in EVERY room for everyone? This can't be undone.")) mod("clear_chat", { room: "*" }); };
+
+// ---- a super short tutorial for first-time visitors ----
+//
+// Four cards, shown once per browser; the first moves on by itself when you
+// walk. "?" in the top bar shows it again.
+
+const TUTORIAL = [
+  { icon: "👋", title: "Welcome to Habit", text: "Click the ground to walk around. Nobody's told when you come or go, so look around as long as you like." },
+  { icon: "🚪", title: "Walk into a door to visit a room", text: "Hover a door to peek at who's inside first. The 🚇 subway and the sign at the top left take you anywhere." },
+  { icon: "💬", title: "Say hi whenever you're ready", text: "Type in the chat to talk. You show as Anonymous #code until you choose to show your name." },
+  { icon: "📌", title: "Every room has a board", text: "Click the noticeboard to read and post threads that stay. Once you've signed up, click your name to change your look." },
+];
+let tutorialStep = -1;
+
+function showTutorial(step) {
+  tutorialStep = step;
+  if (step < 0 || step >= TUTORIAL.length) {
+    $("tutorial").hidden = true;
+    document.body.classList.remove("touring");
+    tutorialStep = -1;
+    store.set("habit.tutorialDone", "1");
+    return;
+  }
+  const s = TUTORIAL[step];
+  $("tutorialIcon").textContent = s.icon;
+  $("tutorialTitle").textContent = s.title;
+  $("tutorialText").textContent = s.text;
+  $("tutorialNext").textContent = step === TUTORIAL.length - 1 ? "Let's go!" : "Next";
+  $("tutorialSkip").hidden = step === TUTORIAL.length - 1;
+  $("tutorialDots").replaceChildren(...TUTORIAL.map((_, i) => {
+    const dot = document.createElement("i");
+    if (i === step) dot.className = "on";
+    return dot;
+  }));
+  $("tutorial").hidden = false;
+  document.body.classList.add("touring");
+  $("hint").hidden = true; // the tutorial says the same thing
+}
+
+// tutorialWalked moves past the first card once they've walked.
+function tutorialWalked() { if (tutorialStep === 0) showTutorial(1); }
+
+$("tutorialNext").onclick = () => showTutorial(tutorialStep + 1);
+$("tutorialSkip").onclick = () => showTutorial(-1);
+$("helpBtn").onclick = () => showTutorial(0);
+if (!store.get("habit.tutorialDone")) setTimeout(() => { if (tutorialStep < 0) showTutorial(0); }, 1200);
