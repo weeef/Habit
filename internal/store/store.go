@@ -29,6 +29,28 @@ type Account struct {
 	Style        Style
 	RandomLook   bool // a fresh random look at each login; Style is kept for switching back
 	Welcomes     int  // newcomers this account was first to greet (PLAN.md §4.1)
+
+	// Moderation. A zero time means none; Forever means permanent.
+	BannedUntil time.Time
+	BanReason   string
+	MutedUntil  time.Time
+}
+
+// Forever is the "until" of a permanent ban or mute.
+var Forever = time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)
+
+// Banned and Muted report whether a ban or mute is in force at now.
+func (a *Account) Banned(now time.Time) bool { return now.Before(a.BannedUntil) }
+func (a *Account) Muted(now time.Time) bool  { return now.Before(a.MutedUntil) }
+
+// ModAction is one entry in the moderation log: who did what to whom.
+type ModAction struct {
+	At       time.Time
+	AdminID  string
+	Action   string // ban, unban, mute, unmute, kick, clear_chat
+	TargetID string // the account acted on, if any
+	Room     string // the room, for clear_chat ("" = every room)
+	Detail   string // e.g. the reason or how long
 }
 
 // Block is a community anyone can start: its own room to walk into and its
@@ -154,6 +176,16 @@ type Store interface {
 	// random one at each login instead. It returns ErrNotFound for an
 	// unknown account.
 	SetLook(ctx context.Context, accountID string, style Style, random bool) error
+	// SetBan bans an account until a time (zero lifts it), or ErrNotFound.
+	SetBan(ctx context.Context, accountID string, until time.Time, reason string) error
+	// SetMute mutes an account everywhere until a time (zero lifts it), or
+	// returns ErrNotFound.
+	SetMute(ctx context.Context, accountID string, until time.Time) error
+	// LogModAction adds an entry to the moderation log.
+	LogModAction(ctx context.Context, a ModAction) error
+	// DeleteMessages permanently deletes a room's saved chat ("" = every
+	// room) and returns how many messages went.
+	DeleteMessages(ctx context.Context, room string) (int64, error)
 
 	// CreateBlock saves a new block, or returns ErrNameTaken if the slug is
 	// in use (ignoring case).

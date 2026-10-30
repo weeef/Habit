@@ -28,7 +28,13 @@ func startServer(t *testing.T) string {
 
 func startServerWith(t *testing.T, st store.Store) string {
 	t.Helper()
-	sv, err := New(context.Background(), Options{Store: st, Tick: 2 * time.Millisecond, Step: 2 * time.Millisecond})
+	return startServerOpts(t, Options{Store: st})
+}
+
+func startServerOpts(t *testing.T, opts Options) string {
+	t.Helper()
+	opts.Tick, opts.Step = 2*time.Millisecond, 2*time.Millisecond
+	sv, err := New(context.Background(), opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -598,4 +604,94 @@ func TestHideChatBefore(t *testing.T) {
 	if len(h) != 1 || h[0].Text != "fresh" {
 		t.Fatalf("want only the fresh message, got %+v", h)
 	}
+}
+
+func TestAdminModeration(t *testing.T) {
+	url := startServerOpts(t, Options{Store: store.NewMemory(), Admins: []string{"Boss"}})
+	admin := dial(t, url)
+	user := dial(t, url)
+	guest := dial(t, url)
+	if authed := admin.send2(map[string]any{"t": "signup", "username": "boss", "password": "long enough pw", "birthYear": 1990}, "authed"); authed["admin"] != true {
+		t.Fatalf("boss should be an admin, got %v", authed)
+	}
+	userToken := signup(user, "rowdy", 1990)
+
+	// Non-admins can't moderate: nothing happens.
+	user.send(map[string]any{"t": "mod", "action": "clear_chat"})
+	user.send(map[string]any{"t": "chat", "text": "still here"})
+	user.expect("chat")
+
+	// The admin sees who's in the room, with real usernames.
+	admin.send(map[string]any{"t": "mod", "action": "people"})
+	people := admin.expect("mod_people")["people"].([]any)
+	var rowdyID, guestID string
+	for _, p := range people {
+		p := p.(map[string]any)
+		if p["username"] == "rowdy" {
+			rowdyID = p["id"].(string)
+		} else if p["guest"] == true {
+			guestID = p["id"].(string)
+		}
+	}
+	if rowdyID == "" || guestID == "" {
+		t.Fatalf("want rowdy and a guest in the list, got %v", people)
+	}
+
+	// Mute: rowdy can't chat; unmute: they can again.
+	admin.send(map[string]any{"t": "mod", "action": "mute", "target": rowdyID, "minutes": 60})
+	admin.expect("mod_done")
+	user.send(map[string]any{"t": "chat", "text": "can you hear me"})
+	for {
+		if n := user.expect("notice")["message"].(string); strings.Contains(n, "muted") {
+			break
+		}
+	}
+	admin.send(map[string]any{"t": "mod", "action": "unmute", "username": "rowdy"})
+	admin.expect("mod_done")
+	user.send(map[string]any{"t": "chat", "text": "back"})
+	user.expect("chat")
+
+	// Clear chat: everyone in the room is told.
+	admin.send(map[string]any{"t": "mod", "action": "clear_chat"})
+	admin.expect("mod_done")
+	if cleared := guest.expect("chat_cleared"); cleared["room"] != "plaza" {
+		t.Fatalf("want plaza cleared, got %v", cleared)
+	}
+
+	// Kick a visitor.
+	admin.send(map[string]any{"t": "mod", "action": "kick", "target": guestID})
+	admin.expect("mod_done")
+	guest.expect("kicked")
+
+	// Ban: rowdy is thrown out and can't log back in.
+	admin.send(map[string]any{"t": "mod", "action": "ban", "username": "rowdy", "reason": "spam"})
+	admin.expect("mod_done")
+	if msg := user.expect("kicked")["message"].(string); !strings.Contains(msg, "banned") || !strings.Contains(msg, "spam") {
+		t.Fatalf("want a ban message, got %q", msg)
+	}
+	again := dial(t, url)
+	again.send(map[string]any{"t": "resume", "token": userToken})
+	if e := again.expect("auth_error"); e["banned"] != true {
+		t.Fatalf("a banned account shouldn't resume, got %v", e)
+	}
+
+	// Admins can't be banned, even by another admin.
+	admin.send(map[string]any{"t": "mod", "action": "ban", "username": "boss"})
+	if msg := admin.expect("mod_done")["message"].(string); !strings.Contains(msg, "can't") {
+		t.Fatalf("want a refusal, got %q", msg)
+	}
+
+	// Unban: they can come back.
+	admin.send(map[string]any{"t": "mod", "action": "unban", "username": "rowdy"})
+	admin.expect("mod_done")
+	back := dial(t, url)
+	back.send(map[string]any{"t": "resume", "token": userToken})
+	back.expect("authed")
+}
+
+// send2 sends a message and waits for a reply of type typ.
+func (c *client) send2(v any, typ string) map[string]any {
+	c.t.Helper()
+	c.send(v)
+	return c.expect(typ)
 }

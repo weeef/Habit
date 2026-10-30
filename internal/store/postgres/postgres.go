@@ -44,17 +44,26 @@ func Open(ctx context.Context, url string) (*Store, error) {
 func (s *Store) Close() { s.pool.Close() }
 
 const accountCols = `a.id, a.username, a.birth_year, a.created_at, a.salt, a.password_hash, a.recovery_hash,
-	a.style_skin, a.style_hair, a.style_outfit, a.style_accessory, a.random_look, a.welcomes`
+	a.style_skin, a.style_hair, a.style_outfit, a.style_accessory, a.random_look, a.welcomes,
+	a.banned_until, a.ban_reason, a.muted_until`
 
 func scanAccount(row pgx.Row) (*store.Account, error) {
 	var a store.Account
+	var banned, muted *time.Time
 	err := row.Scan(&a.ID, &a.Username, &a.BirthYear, &a.CreatedAt, &a.Salt, &a.PasswordHash, &a.RecoveryHash,
-		&a.Style.Skin, &a.Style.Hair, &a.Style.Outfit, &a.Style.Accessory, &a.RandomLook, &a.Welcomes)
+		&a.Style.Skin, &a.Style.Hair, &a.Style.Outfit, &a.Style.Accessory, &a.RandomLook, &a.Welcomes,
+		&banned, &a.BanReason, &muted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, store.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
+	}
+	if banned != nil {
+		a.BannedUntil = *banned
+	}
+	if muted != nil {
+		a.MutedUntil = *muted
 	}
 	return &a, nil
 }
@@ -86,6 +95,46 @@ func (s *Store) AddWelcome(ctx context.Context, accountID string) (int, error) {
 		return 0, store.ErrNotFound
 	}
 	return n, err
+}
+
+// nullTime stores a zero time as NULL.
+func nullTime(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
+}
+
+func (s *Store) SetBan(ctx context.Context, accountID string, until time.Time, reason string) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE accounts SET banned_until = $2, ban_reason = $3 WHERE id = $1`,
+		accountID, nullTime(until), reason)
+	if err == nil && tag.RowsAffected() == 0 {
+		return store.ErrNotFound
+	}
+	return err
+}
+
+func (s *Store) SetMute(ctx context.Context, accountID string, until time.Time) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE accounts SET muted_until = $2 WHERE id = $1`, accountID, nullTime(until))
+	if err == nil && tag.RowsAffected() == 0 {
+		return store.ErrNotFound
+	}
+	return err
+}
+
+func (s *Store) LogModAction(ctx context.Context, a store.ModAction) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO mod_actions (at, admin_id, action, target_id, room, detail) VALUES ($1, $2, $3, $4, $5, $6)`,
+		a.At, a.AdminID, a.Action, a.TargetID, a.Room, a.Detail)
+	return err
+}
+
+func (s *Store) DeleteMessages(ctx context.Context, room string) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM messages WHERE $1 = '' OR room = $1`, room)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 func (s *Store) SetLook(ctx context.Context, accountID string, style store.Style, random bool) error {

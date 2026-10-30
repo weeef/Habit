@@ -87,7 +87,9 @@ func plaza() *Room {
 	}
 	one := func(id, kind string, x, y int) Prop { return Prop{ID: id, Kind: kind, At: Point{x, y}} }
 	oak := func(id string, x, y int) Prop { return Prop{ID: id, Kind: PropTree, Variant: "leafy", At: Point{x, y}} }
-	willow := func(id string, x, y int) Prop { return Prop{ID: id, Kind: PropTree, Variant: "willow", At: Point{x, y}} }
+	willow := func(id string, x, y int) Prop {
+		return Prop{ID: id, Kind: PropTree, Variant: "willow", At: Point{x, y}}
+	}
 	bush := func(id string, x, y int, flowers bool) Prop {
 		p := one(id, PropBush, x, y)
 		if flowers {

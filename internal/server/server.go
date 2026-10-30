@@ -43,6 +43,9 @@ type Options struct {
 	// HideChatBefore hides saved chat sent before this time (it isn't
 	// deleted): a clean slate for a demo, undone by unsetting it.
 	HideChatBefore time.Time
+	// Admins are usernames (any case) that can moderate: clear chat, ban,
+	// mute and kick.
+	Admins []string
 }
 
 // Server holds the whole world. One mutex guards all room and session state;
@@ -52,7 +55,8 @@ type Server struct {
 	store    store.Store
 	accounts *Accounts
 	secret   []byte
-	static   staticFiles // the web client, or nil
+	static   staticFiles     // the web client, or nil
+	admins   map[string]bool // lower-case usernames
 
 	mu         sync.Mutex
 	rooms      map[string]*room
@@ -138,6 +142,12 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		accounts: NewAccounts(opts.Store),
 		secret:   secret,
 		rooms:    map[string]*room{},
+	}
+	sv.admins = map[string]bool{}
+	for _, name := range opts.Admins {
+		if name = strings.ToLower(strings.TrimSpace(name)); name != "" {
+			sv.admins[name] = true
+		}
 	}
 	if opts.Static != nil {
 		if sv.static, err = loadStatic(opts.Static); err != nil {
@@ -233,7 +243,11 @@ type inMsg struct {
 	Slug      string       `json:"slug"`  // a block, for its storefront
 	Street    string       `json:"street"`
 	Lot       int          `json:"lot"`
-	Since     int64        `json:"since"` // ms since 1970, for "what you missed"
+	Since     int64        `json:"since"`   // ms since 1970, for "what you missed"
+	Action    string       `json:"action"`  // admin: people, clear_chat, ban, unban, mute, unmute, kick
+	Target    string       `json:"target"`  // admin: an avatar ID in the admin's room
+	Minutes   int          `json:"minutes"` // admin: how long a ban or mute lasts (0 = for good)
+	Reason    string       `json:"reason"`  // admin: why
 }
 
 type avatarView struct {
@@ -437,6 +451,9 @@ func (sv *Server) handle(ctx context.Context, s *session, m inMsg) {
 			sv.sendNotes(ctx, s, acct)
 		}
 		return
+	case "mod":
+		sv.handleMod(ctx, s, m)
+		return
 	case "set_look":
 		sv.handleSetLook(ctx, s, m.Style, m.Random)
 		return
@@ -548,6 +565,15 @@ func (sv *Server) finishAuth(s *session, acct *store.Account, token, recovery st
 		sv.enqueue(s, map[string]any{"t": "auth_error", "message": err.Error()})
 		return
 	}
+	if now := sv.opts.Now(); acct.Banned(now) {
+		msg := "This account has been banned " + untilText(acct.BannedUntil) + "."
+		if acct.BanReason != "" {
+			msg += " Reason: " + acct.BanReason
+		}
+		sv.enqueue(s, map[string]any{"t": "auth_error", "message": msg, "banned": true})
+		sv.enqueue(s, map[string]any{"t": "notice", "message": msg})
+		return
+	}
 	s.acct = acct
 	s.style = acct.Style
 	if acct.RandomLook {
@@ -557,6 +583,7 @@ func (sv *Server) finishAuth(s *session, acct *store.Account, token, recovery st
 		"t": "authed", "username": acct.Username, "token": token,
 		"recoveryCode": recovery, "ageBand": ageBand(acct.BirthYear, sv.opts.Now()),
 		"style": s.style, "savedStyle": acct.Style, "randomLook": acct.RandomLook, "welcomes": acct.Welcomes,
+		"admin": sv.isAdminName(acct.Username),
 	})
 	if s.room != nil {
 		// Their anonymous tag changes from "Visitor" to "Anonymous", and
@@ -627,6 +654,9 @@ func (sv *Server) chatLocked(s *session, text string) (store.Message, bool) {
 	if s.acct == nil {
 		// Guests can look around, walk and wave; talking needs a name.
 		sv.enqueue(s, map[string]any{"t": "need_account"})
+		return store.Message{}, false
+	}
+	if sv.mutedLocked(s) {
 		return store.Message{}, false
 	}
 	text = strings.TrimSpace(text)

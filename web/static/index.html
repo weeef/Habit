@@ -37,6 +37,7 @@
         <button type="button" class="sign-chip time-chip" id="timeChip" hidden></button>
         <button type="button" id="notesBtn" class="sign-chip bell" hidden aria-label="Replies to you">🔔<span class="badge" id="notesCount" hidden></span></button>
         <button type="button" id="viewToggle" class="sign-chip" aria-pressed="false" title="Switch between the world and a plain chat list">List view</button>
+        <button type="button" id="adminBtn" class="sign-chip" hidden title="Moderate">🛡️ Admin</button>
         <button type="button" id="accountBtn" class="sign-chip">Sign up</button>
       </div>
     </header>
@@ -174,6 +175,53 @@
         <button type="submit" id="lookSave">Save my look</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- Admins only: moderate the room you're in, or any account by name. -->
+  <dialog id="adminDialog" aria-labelledby="adminTitle">
+    <div class="auth admin">
+      <header class="admin-head">
+        <h2 id="adminTitle">🛡️ Admin</h2>
+        <button type="button" class="ghost close" id="adminClose" aria-label="Close">✕</button>
+      </header>
+      <p class="admin-status" id="adminStatus" role="status"></p>
+
+      <section>
+        <h3>People in <span id="adminRoom">this room</span> <button type="button" class="chip" id="adminRefresh">↻ Refresh</button></h3>
+        <ul class="admin-people" id="adminPeople"></ul>
+      </section>
+
+      <section>
+        <h3>Any account</h3>
+        <form id="adminForm" class="admin-form" autocomplete="off">
+          <input name="username" placeholder="Username" required maxlength="20" aria-label="Username">
+          <select name="modAction" aria-label="Action">
+            <option value="mute">Mute</option>
+            <option value="unmute">Unmute</option>
+            <option value="ban">Ban</option>
+            <option value="unban">Unban</option>
+            <option value="kick">Kick</option>
+          </select>
+          <select name="minutes" aria-label="For how long">
+            <option value="60">1 hour</option>
+            <option value="1440">1 day</option>
+            <option value="10080">1 week</option>
+            <option value="0">For good</option>
+          </select>
+          <input name="reason" placeholder="Reason (optional)" maxlength="200" aria-label="Reason">
+          <button type="submit">Do it</button>
+        </form>
+      </section>
+
+      <section>
+        <h3>Chat</h3>
+        <div class="row admin-clear">
+          <button type="button" class="ghost" id="clearRoom">Clear this room's chat</button>
+          <button type="button" class="ghost danger" id="clearAll">Clear chat everywhere</button>
+        </div>
+        <p class="muted">Clearing deletes saved chat for good. Board posts aren't touched.</p>
+      </section>
+    </div>
   </dialog>
 
   <dialog id="recoveryDialog">

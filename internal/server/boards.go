@@ -250,6 +250,9 @@ func (sv *Server) postAllowedLocked(s *session, limit *bucket, texts ...string) 
 		sv.enqueue(s, map[string]any{"t": "need_account"})
 		return false
 	}
+	if sv.mutedLocked(s) {
+		return false
+	}
 	now := sv.opts.Now()
 	if ageBand(s.acct.BirthYear, now) != BandAdult {
 		for _, text := range texts {

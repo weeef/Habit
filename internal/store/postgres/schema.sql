@@ -17,6 +17,21 @@ ALTER TABLE accounts ADD COLUMN IF NOT EXISTS style_outfit    smallint NOT NULL 
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS style_accessory smallint NOT NULL DEFAULT 0;
 -- A fresh random look at each login instead of the saved one.
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS random_look boolean NOT NULL DEFAULT false;
+-- Moderation: bans and global mutes (NULL = none).
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS banned_until timestamptz;
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS ban_reason   text NOT NULL DEFAULT '';
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS muted_until  timestamptz;
+
+-- Every admin action, for accountability.
+CREATE TABLE IF NOT EXISTS mod_actions (
+    id        bigserial PRIMARY KEY,
+    at        timestamptz NOT NULL,
+    admin_id  text NOT NULL,
+    action    text NOT NULL,
+    target_id text NOT NULL DEFAULT '',
+    room      text NOT NULL DEFAULT '',
+    detail    text NOT NULL DEFAULT ''
+);
 -- Newcomers this account was first to greet (PLAN.md §4.1).
 ALTER TABLE accounts ADD COLUMN IF NOT EXISTS welcomes integer NOT NULL DEFAULT 0;
 

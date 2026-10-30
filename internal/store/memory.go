@@ -30,6 +30,7 @@ type Memory struct {
 	votes    map[voteKey]int
 	counters map[string]int64
 	blocks   map[string]*Block // lower-case slug → block
+	modLog   []ModAction
 }
 
 type voteKey struct {
@@ -93,6 +94,48 @@ func (m *Memory) SetLook(_ context.Context, accountID string, style Style, rando
 	}
 	a.Style, a.RandomLook = style, random
 	return nil
+}
+
+func (m *Memory) SetBan(_ context.Context, accountID string, until time.Time, reason string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a := m.byID[accountID]
+	if a == nil {
+		return ErrNotFound
+	}
+	a.BannedUntil, a.BanReason = until, reason
+	return nil
+}
+
+func (m *Memory) SetMute(_ context.Context, accountID string, until time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a := m.byID[accountID]
+	if a == nil {
+		return ErrNotFound
+	}
+	a.MutedUntil = until
+	return nil
+}
+
+func (m *Memory) LogModAction(_ context.Context, a ModAction) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.modLog = append(m.modLog, a)
+	return nil
+}
+
+func (m *Memory) DeleteMessages(_ context.Context, room string) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var n int64
+	for r, h := range m.messages {
+		if room == "" || r == room {
+			n += int64(len(h))
+			delete(m.messages, r)
+		}
+	}
+	return n, nil
 }
 
 func (m *Memory) CreateBlock(_ context.Context, b *Block) error {

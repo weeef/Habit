@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 	_ "time/tzdata" // Plaza days run on New York time, even on servers without zone files
@@ -59,6 +60,11 @@ func Main() {
 		}
 		opts.HideChatBefore = t
 		log.Printf("Hiding chat sent before %s.", t.Format(time.RFC3339))
+	}
+	// HABIT_ADMINS lists usernames that can moderate, e.g. "c0al,someone".
+	if v := os.Getenv("HABIT_ADMINS"); v != "" {
+		opts.Admins = strings.Split(v, ",")
+		log.Printf("Admins: %s", v)
 	}
 	sv, err := server.New(ctx, opts)
 	if err != nil {

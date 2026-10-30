@@ -225,6 +225,23 @@ dialog::backdrop { background: rgb(20 12 40 / 0.4); -webkit-backdrop-filter: blu
 .creator legend { font-weight: 900; padding: 0 6px; }
 #creatorPreview, .creator-preview { width: 110px; height: 130px; }
 .look-modes { display: grid; gap: 8px; }
+/* Admin panel. */
+#adminDialog { width: min(580px, calc(100vw - 32px)); max-width: none; }
+.auth.admin { max-height: min(80vh, 760px); overflow-y: auto; overflow-x: hidden; }
+.admin-head { display: flex; justify-content: space-between; align-items: center; }
+.auth.admin h3 { margin: 6px 0; font-size: 15px; display: flex; gap: 8px; align-items: center; }
+.admin-status { min-height: 1.2em; margin: 0; font-weight: 700; color: var(--ink); }
+.admin-people { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.admin-people li { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 10px; border: 2px solid var(--line); border-radius: 12px; }
+.admin-people .who { flex: 1 1 160px; min-width: 0; }
+.admin-people .who small { display: block; color: var(--muted); }
+.admin-people .empty { color: var(--muted); border-style: dashed; }
+.admin-form { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.admin-form input[name=reason] { grid-column: 1 / -1; }
+.admin-form button { grid-column: 1 / -1; }
+.auth.admin select { font: inherit; padding: 6px 8px; border-radius: 10px; border: 2px solid var(--line); background: transparent; color: var(--ink); }
+.admin-clear { justify-content: flex-start; flex-wrap: wrap; }
+button.danger { color: #c0392b; border-color: #e8a59d; }
 .auth .look-mode { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 2px solid var(--line); border-radius: 14px; cursor: pointer; text-align: left; }
 .auth .look-mode input { flex: none; width: auto; margin: 3px 0 0; accent-color: var(--taxi-ink); }
 .auth .look-mode:has(input:checked) { border-color: var(--taxi); background: rgb(255 205 56 / 0.12); }

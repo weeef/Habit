@@ -334,6 +334,8 @@ function onMessage(m) {
       $("named").disabled = false;
       $("accountBtn").textContent = m.username;
       $("accountBtn").title = "Change your look";
+      state.admin = !!m.admin;
+      $("adminBtn").hidden = !state.admin;
       $("notesBtn").hidden = false;
       if (state.pendingText) {
         send({ t: "chat", text: state.pendingText });
@@ -356,6 +358,34 @@ function onMessage(m) {
     case "auth_error":
       $("authError").textContent = m.message;
       $("authSubmit").disabled = false;
+      if (m.banned) {
+        // Don't keep trying a banned account; carry on as a visitor.
+        store.del("habit.token");
+        state.account = null;
+        state.admin = false;
+        $("accountBtn").textContent = "Sign up";
+        $("accountBtn").title = "";
+        $("adminBtn").hidden = true;
+        $("named").disabled = true;
+      }
+      break;
+
+    case "kicked":
+      state.kicked = true;
+      toast(m.message, 10000);
+      break;
+
+    case "chat_cleared":
+      if (state.room?.id === m.room) {
+        renderLog([]);
+        for (const a of state.avatars.values()) a.bubbles = [];
+      }
+      break;
+
+    case "mod_people": renderAdminPeople(m); break;
+    case "mod_done":
+      $("adminStatus").textContent = m.message;
+      if ($("adminDialog").open) send({ t: "mod", action: "people" });
       break;
 
     case "first_message":
@@ -5035,3 +5065,75 @@ $("lookForm").addEventListener("submit", (e) => {
   setTimeout(() => { $("lookSave").disabled = false; }, 3000); // in case the server asks us to wait
   send({ t: "set_look", style: state.draftStyle, random: lookMode() === "random" });
 });
+
+// ---- admin panel (admins only; the server checks every action) ----
+
+function mod(action, fields = {}) { send({ t: "mod", action, ...fields }); }
+
+function openAdmin() {
+  $("adminStatus").textContent = "";
+  $("adminDialog").showModal();
+  mod("people");
+}
+
+function renderAdminPeople(m) {
+  $("adminRoom").textContent = m.room;
+  const list = $("adminPeople");
+  list.replaceChildren();
+  if (!m.people.length) {
+    const li = document.createElement("li");
+    li.className = "empty";
+    li.textContent = "Nobody else is here.";
+    list.append(li);
+    return;
+  }
+  for (const p of m.people) {
+    const li = document.createElement("li");
+    const who = document.createElement("span");
+    who.className = "who";
+    who.textContent = p.guest ? "Visitor (no account)" : p.username + (p.admin ? " 🛡️" : "") + (p.muted ? " 🔇" : "");
+    const small = document.createElement("small");
+    small.textContent = p.name;
+    who.append(small);
+    li.append(who);
+    const button = (text, action, fields, confirmText) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip";
+      b.textContent = text;
+      b.onclick = () => {
+        if (confirmText && !confirm(confirmText)) return;
+        mod(action, { target: p.id, ...fields });
+      };
+      li.append(b);
+    };
+    if (p.admin) {
+      list.append(li);
+      continue;
+    }
+    if (!p.guest) {
+      if (p.muted) button("Unmute", "unmute", {});
+      else {
+        button("Mute 1h", "mute", { minutes: 60 });
+        button("Mute 1d", "mute", { minutes: 1440 });
+      }
+      button("Ban 1d", "ban", { minutes: 1440 }, `Ban ${p.username} for a day?`);
+      button("Ban", "ban", { minutes: 0 }, `Ban ${p.username} for good?`);
+    }
+    button("Kick", "kick", {});
+    list.append(li);
+  }
+}
+
+$("adminBtn").onclick = openAdmin;
+$("adminClose").onclick = () => $("adminDialog").close();
+$("adminRefresh").onclick = () => mod("people");
+$("adminForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const action = f.modAction.value;
+  if ((action === "ban" || action === "kick") && !confirm(`${action === "ban" ? "Ban" : "Kick"} ${f.username.value}?`)) return;
+  mod(action, { username: f.username.value.trim(), minutes: Number(f.minutes.value), reason: f.reason.value });
+});
+$("clearRoom").onclick = () => { if (confirm("Delete this room's chat for everyone? This can't be undone.")) mod("clear_chat"); };
+$("clearAll").onclick = () => { if (confirm("Delete the chat in EVERY room for everyone? This can't be undone.")) mod("clear_chat", { room: "*" }); };

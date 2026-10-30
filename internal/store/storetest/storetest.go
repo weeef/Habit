@@ -17,16 +17,17 @@ import (
 // Run checks a store implementation. newStore must return an empty store.
 func Run(t *testing.T, newStore func(t *testing.T) store.Store) {
 	tests := map[string]func(*testing.T, store.Store){
-		"Accounts": testAccounts,
-		"Look":     testLook,
-		"Sessions": testSessions,
-		"Messages": testMessages,
-		"Board":    testBoard,
-		"Notify":   testNotifications,
-		"Votes":    testVotesAndSorts,
-		"Secret":   testSecret,
-		"Counters": testCounters,
-		"Blocks":   testBlocks,
+		"Accounts":   testAccounts,
+		"Look":       testLook,
+		"Moderation": testModeration,
+		"Sessions":   testSessions,
+		"Messages":   testMessages,
+		"Board":      testBoard,
+		"Notify":     testNotifications,
+		"Votes":      testVotesAndSorts,
+		"Secret":     testSecret,
+		"Counters":   testCounters,
+		"Blocks":     testBlocks,
 	}
 	for name, fn := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -105,6 +106,58 @@ func testLook(t *testing.T, s store.Store) {
 	}
 	if err := s.SetLook(ctx, "nobody", look, false); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("want ErrNotFound for an unknown account, got %v", err)
+	}
+}
+
+func testModeration(t *testing.T, s store.Store) {
+	ctx := context.Background()
+	if err := s.CreateAccount(ctx, account("a1", "rowdy")); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.AccountByUsername(ctx, "rowdy")
+	if !got.BannedUntil.IsZero() || !got.MutedUntil.IsZero() {
+		t.Fatalf("new accounts start unbanned and unmuted: %+v", got)
+	}
+	until := now.Add(time.Hour)
+	if err := s.SetBan(ctx, "a1", store.Forever, "spam"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetMute(ctx, "a1", until); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.AccountByUsername(ctx, "rowdy")
+	if !got.Banned(now) || got.BanReason != "spam" || !got.MutedUntil.Equal(until) || !got.Muted(now) {
+		t.Fatalf("ban and mute didn't save: %+v", got)
+	}
+	if err := s.SetBan(ctx, "a1", time.Time{}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetMute(ctx, "a1", time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = s.AccountByUsername(ctx, "rowdy"); got.Banned(now) || got.Muted(now) {
+		t.Fatalf("unban and unmute didn't save: %+v", got)
+	}
+	if err := s.SetBan(ctx, "nobody", until, ""); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+	if err := s.LogModAction(ctx, store.ModAction{At: now, AdminID: "a1", Action: "clear_chat"}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, room := range []string{"plaza", "plaza", "gym"} {
+		if err := s.AddMessage(ctx, store.Message{Room: room, AvatarID: "x", Name: "n", Text: "hi", SentAt: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, err := s.DeleteMessages(ctx, "plaza"); err != nil || n != 2 {
+		t.Fatalf("want 2 plaza messages deleted, got %d, %v", n, err)
+	}
+	if msgs, _ := s.RecentMessages(ctx, "gym", 10); len(msgs) != 1 {
+		t.Fatalf("gym's chat should be untouched, got %d", len(msgs))
+	}
+	if n, err := s.DeleteMessages(ctx, ""); err != nil || n != 1 {
+		t.Fatalf("want the last message deleted, got %d, %v", n, err)
 	}
 }
 
